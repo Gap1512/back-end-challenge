@@ -18,7 +18,7 @@ the database structure (fig. [[fig1]]), aiming to fit the desired endpoints resu
 and parameters, we start to setup the database.
 
 #+NAME: fig1
-[[./doc/database.png]]
+[[./database/model/database.png]]
 
 After [[https://www.postgresql.org/download/][downloading and installing]] Postgres, it is necessary to create
 the database, running the following sql command (using pgAdmin or

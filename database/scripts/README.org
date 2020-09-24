@@ -23,7 +23,7 @@ script containing all the following commands can be found at
 The UML database model is as follow (fig. [[fig1]]):
 
 #+NAME: fig1
-[[../../doc/database.png]]
+[[../model/database.png]]
 
 In this implementation, all tables are created on the =public= schema.
 We start by creating the tables that do not have foreign keys.
