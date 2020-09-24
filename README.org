@@ -11,3 +11,22 @@
 #+EXCLUDE_TAGS: noexport
 #+CREATOR: Emacs 26.2 (Org mode 9.1.9)
 
+* Database Modelling
+
+In this project, a PostgreSQL database will be used. After modelling
+the database structure (fig. [[fig1]]), aiming to fit the desired endpoints results
+and parameters, we start to setup the database.
+
+#+NAME: fig1
+[[./doc/database.png]]
+
+After [[https://www.postgresql.org/download/][downloading and installing]] Postgres, it is necessary to create
+the database, running the following sql command (using pgAdmin or
+psql):
+
+#+BEGIN_SRC sql
+CREATE DATABASE challenge;
+#+END_SRC
+
+Next, it is necessary to connect to the database, by running =\c
+challenge= on psql, so the script may alter this specific database.
