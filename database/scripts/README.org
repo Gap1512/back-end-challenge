@@ -114,3 +114,86 @@ CREATE TABLE IF NOT EXISTS CardsChecklistItem (
 );
 #+END_SRC
 
+* Tables Initial Insertions
+
+There are values that needs to be already on the database after the
+creation of it. Values like "HOSPITALAR" and "AMBULATORIAL", on the
+=billTypes= table. Also, each table will receive a bunch of data, to
+ensure that the creation process was sucessful. As before, the tangled
+code can be found at [[file:tables_insertions.sql][tables_insertions.sql]]
+
+#+BEGIN_SRC sql :tangle tables_insertions.sql
+INSERT INTO BillTypes (name) VALUES
+	('HOSPITALAR'),
+	('AMBULATORIAL');
+	
+INSERT INTO Bills (typeId, totalAmount) VALUES
+	(1, 5000.00),
+	(2, 3500.00);
+
+INSERT INTO ChecklistItems (done) VALUES
+	(false),
+	(true);
+	
+INSERT INTO Documents (notReceived) VALUES
+	(false),
+	(true);
+	
+INSERT INTO Pendencies (open) VALUES
+	(false),
+	(true);
+
+INSERT INTO Patients (name) VALUES
+	('Ruan Samuel Luís Dias'),
+	('Jaqueline Aline de Paula');
+	
+INSERT INTO HealthInsurances (name) VALUES
+	('Pietra e Joaquim Ltda'),
+	('Fabiana e Lavínia Ltda');
+	
+INSERT INTO Activities (title, subtitle, sla) VALUES
+	('Atividade 1', 'Subtítulo 1', 4),
+	('Atividade 2', 'Subtítulo 2', 10);
+	
+INSERT INTO Cards (patientId, activityId, healthInsuranceId, visitId, billId) 
+	VALUES
+		(1, 1, 1, 1, 1),
+		(2, 2, 2, 2, 2);
+		
+INSERT INTO CardsChecklistItem (cardId, checklistItemId) VALUES
+	(1, 1),
+	(2, 2);
+	
+INSERT INTO CardsDocuments (cardId, documentId) VALUES
+	(1, 1),
+	(2, 2);
+	
+INSERT INTO CardsPendencies (cardId, pendencyId) VALUES
+	(1, 1),
+	(2, 2);
+#+END_SRC
+
+The selections are made using these commands:
+
+#+BEGIN_SRC sql
+SELECT * FROM Activities;
+SELECT * FROM Cards;
+SELECT * FROM HealthInsurances;
+SELECT * FROM Patients;
+SELECT * FROM Bills;
+SELECT * FROM BillTypes;
+SELECT * FROM ChecklistItems;
+SELECT * FROM CardsChecklistItem;
+SELECT * FROM Documents;
+SELECT * FROM CardsDocuments;
+SELECT * FROM Pendencies;
+SELECT * FROM CardsPendencies;
+#+END_SRC
+
+More data is going to be inserted into the database, but this will be
+made using the Common Lisp programming language, to automate this
+process.
+
+Having the database modeled, strutured and populated with a few
+values, it is possible to move to the next step, the creation of the
+back-end server.
