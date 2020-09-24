@@ -179,3 +179,25 @@ occurs is:
 #+BEGIN_src sql
 CREATE TABLE cards (id INTEGER NOT NULL, creation_date TIMESTAMP NOT NULL, patient_id INTEGER NOT NULL, activity_id INTEGER NOT NULL, health_insurance_id INTEGER NOT NULL, visit_id INTEGER NOT NULL, bill_id INTEGER NOT NULL, PRIMARY KEY (id))
 #+END_src
+
+* Lisp Connection To Database
+
+In order to connect to the database, we must create a user for Lisp
+and granting all privileges to it. This is done by running the
+following SQL script:
+
+#+BEGIN_SRC sql
+CREATE USER lisp WITH PASSWORD 'lisp';
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO lisp;
+#+END_SRC
+
+So Lisp can connect like in the following example, that returns the
+card with =id= equals 1:
+
+#+BEGIN_SRC lisp
+(with-connection '("challenge" "lisp" "lisp" "localhost")
+  (get-dao 'card 1))
+#+END_SRC
+
+#+RESULTS:
+: #<CARD {10042A0863}>
