@@ -29,4 +29,9 @@ CREATE DATABASE challenge;
 #+END_SRC
 
 Next, it is necessary to connect to the database, by running =\c
-challenge= on psql, so the script may alter this specific database.
+challenge= on psql, so the script may alter this specific
+database. The documentation on the implementation of the script can be
+found at [[file:database/scripts/][database/scripts/]], I encourage the reader to check the
+=README.org= file. Thus, the tables are created by running [[file:database/scripts/table_creation.sql][this script]]
+and they are populated by running [[file:database/scripts/tables_insertions.sql][this other script]].
+

@@ -3,4 +3,5 @@
 *.pdf
 *.tex
 *.csv
+*.dia~
 _minted-README/
