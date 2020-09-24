@@ -1,0 +1,199 @@
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: author:t broken-links:nil c:nil creator:nil
+#+OPTIONS: d:(not "LOGBOOK") date:nil e:t email:nil f:t inline:t num:t
+#+OPTIONS: p:nil pri:nil prop:nil stat:t tags:t tasks:t tex:t
+#+OPTIONS: timestamp:t title:t toc:nil todo:t |:t
+#+TITLE: Back-End Challenge: Database Scripting
+#+AUTHOR: Gustavo Alves Pacheco
+#+EMAIL: gap1512@gmail.com
+#+LANGUAGE: en
+#+SELECT_TAGS: export
+#+EXCLUDE_TAGS: noexport
+#+CREATOR: Emacs 26.2 (Org mode 9.1.9)
+
+* Tables Creation
+
+This =README= file documents the process of implementation of the
+script that generates the table structure of the database. It is
+assumed that the reader is already connected to the database. If there
+is no interest in runnning each command in separate, the executable
+script containing all the following commands can be found at
+[[file:tables_creation.sql][tables_creation.sql]].
+
+The UML database model is as follow (fig. [[fig1]]):
+
+#+NAME: fig1
+[[../model/database.png]]
+
+In this implementation, all tables are created on the =public= schema.
+We start by creating the tables that do not have foreign keys.
+
+#+BEGIN_SRC sql :tangle tables_creation.sql
+CREATE TABLE IF NOT EXISTS Activities (
+       id SERIAL PRIMARY KEY,
+       title TEXT NOT NULL,
+       subtitle TEXT NOT NULL,
+       sla INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS HealthInsurances (
+       id SERIAL PRIMARY KEY,
+       name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Patients (
+       id SERIAL PRIMARY KEY,
+       name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS BillTypes (
+       id SERIAL PRIMARY KEY,
+       name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Pendencies (
+       id SERIAL PRIMARY KEY,
+       open BOOLEAN NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Documents (
+       id SERIAL PRIMARY KEY,
+       notReceived BOOLEAN NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ChecklistItems (
+       id SERIAL PRIMARY KEY,
+       done BOOLEAN NOT NULL
+);
+#+END_SRC
+
+Next, we implementat the script of the tables that have FK, starting
+by =Bills=, =Cards= and following by the remaining ones.
+
+#+BEGIN_SRC sql :tangle tables_creation.sql
+CREATE TABLE IF NOT EXISTS Bills (
+       id SERIAL PRIMARY KEY,
+       typeId INTEGER NOT NULL,
+       totalAmount REAL NOT NULL,
+       FOREIGN KEY (typeId) REFERENCES BillTypes (id)
+);
+
+CREATE TABLE IF NOT EXISTS Cards (
+       id SERIAL PRIMARY KEY,
+       creationDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+       patientId INTEGER NOT NULL,
+       activityId INTEGER NOT NULL,
+       healthInsuranceId INTEGER NOT NULL,
+       visitId INTEGER NOT NULL,
+       billId INTEGER NOT NULL,
+       FOREIGN KEY (patientId) REFERENCES Patients (id),
+       FOREIGN KEY (activityId) REFERENCES Activities (id),
+       FOREIGN KEY (healthInsuranceId) REFERENCES HealthInsurances (id),
+       FOREIGN KEY (billId) REFERENCES Bills (id)
+);
+
+CREATE TABLE IF NOT EXISTS CardsPendencies (
+       cardId INTEGER NOT NULL,
+       pendencyId INTEGER NOT NULL,
+       FOREIGN KEY (cardId) REFERENCES Cards (id),
+       FOREIGN KEY (pendencyId) REFERENCES Pendencies (id)
+);
+
+CREATE TABLE IF NOT EXISTS CardsDocuments (
+       cardId INTEGER NOT NULL,
+       documentId INTEGER NOT NULL,
+       FOREIGN KEY (cardId) REFERENCES Cards (id),
+       FOREIGN KEY (documentId) REFERENCES Documents (id)
+);
+
+CREATE TABLE IF NOT EXISTS CardsChecklistItem (
+       cardId INTEGER NOT NULL,
+       checklistItemId INTEGER NOT NULL,
+       FOREIGN KEY (cardId) REFERENCES Cards (id),
+       FOREIGN KEY (checklistItemId) REFERENCES ChecklistItems (id)
+);
+#+END_SRC
+
+* Tables Initial Insertions
+
+There are values that needs to be already on the database after the
+creation of it. Values like "HOSPITALAR" and "AMBULATORIAL", on the
+=billTypes= table. Also, each table will receive a bunch of data, to
+ensure that the creation process was sucessful. As before, the tangled
+code can be found at [[file:tables_insertions.sql][tables_insertions.sql]]
+
+#+BEGIN_SRC sql :tangle tables_insertions.sql
+INSERT INTO BillTypes (name) VALUES
+	('HOSPITALAR'),
+	('AMBULATORIAL');
+	
+INSERT INTO Bills (typeId, totalAmount) VALUES
+	(1, 5000.00),
+	(2, 3500.00);
+
+INSERT INTO ChecklistItems (done) VALUES
+	(false),
+	(true);
+	
+INSERT INTO Documents (notReceived) VALUES
+	(false),
+	(true);
+	
+INSERT INTO Pendencies (open) VALUES
+	(false),
+	(true);
+
+INSERT INTO Patients (name) VALUES
+	('Ruan Samuel Luís Dias'),
+	('Jaqueline Aline de Paula');
+	
+INSERT INTO HealthInsurances (name) VALUES
+	('Pietra e Joaquim Ltda'),
+	('Fabiana e Lavínia Ltda');
+	
+INSERT INTO Activities (title, subtitle, sla) VALUES
+	('Atividade 1', 'Subtítulo 1', 4),
+	('Atividade 2', 'Subtítulo 2', 10);
+	
+INSERT INTO Cards (patientId, activityId, healthInsuranceId, visitId, billId) 
+	VALUES
+		(1, 1, 1, 1, 1),
+		(2, 2, 2, 2, 2);
+		
+INSERT INTO CardsChecklistItem (cardId, checklistItemId) VALUES
+	(1, 1),
+	(2, 2);
+	
+INSERT INTO CardsDocuments (cardId, documentId) VALUES
+	(1, 1),
+	(2, 2);
+	
+INSERT INTO CardsPendencies (cardId, pendencyId) VALUES
+	(1, 1),
+	(2, 2);
+#+END_SRC
+
+The selections are made using these commands:
+
+#+BEGIN_SRC sql
+SELECT * FROM Activities;
+SELECT * FROM Cards;
+SELECT * FROM HealthInsurances;
+SELECT * FROM Patients;
+SELECT * FROM Bills;
+SELECT * FROM BillTypes;
+SELECT * FROM ChecklistItems;
+SELECT * FROM CardsChecklistItem;
+SELECT * FROM Documents;
+SELECT * FROM CardsDocuments;
+SELECT * FROM Pendencies;
+SELECT * FROM CardsPendencies;
+#+END_SRC
+
+More data is going to be inserted into the database, but this will be
+made using the Common Lisp programming language, to automate this
+process.
+
+Having the database modeled, strutured and populated with a few
+values, it is possible to move to the next step, the creation of the
+back-end server.
