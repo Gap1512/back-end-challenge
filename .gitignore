@@ -1,0 +1,6 @@
+*.fasl
+*.bbl
+*.pdf
+*.tex
+*.csv
+_minted-README/
