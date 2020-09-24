@@ -1,0 +1,181 @@
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: author:t broken-links:nil c:nil creator:nil
+#+OPTIONS: d:(not "LOGBOOK") date:nil e:t email:nil f:t inline:t num:t
+#+OPTIONS: p:nil pri:nil prop:nil stat:t tags:t tasks:t tex:t
+#+OPTIONS: timestamp:t title:t toc:nil todo:t |:t
+
+#+TITLE: Back-End Challenge: Server Creation
+#+AUTHOR: Gustavo Alves Pacheco
+#+EMAIL: gap1512@gmail.com
+#+LANGUAGE: en
+#+SELECT_TAGS: export
+#+EXCLUDE_TAGS: noexport
+#+CREATOR: Emacs 26.2 (Org mode 9.1.9)
+
+First, we start by calling the following macro to ensure that the
+definitions all go to the desired package:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(in-package :back-end)
+#+END_SRC
+
+On both =.lisp= files.
+
+#+BEGIN_SRC lisp :tangle classes.lisp :exports none
+(in-package :back-end)
+#+END_SRC
+
+Worth noting again, is that all the source code will be tangled into
+[[file:back-end.lisp][back-end.lisp]].
+
+* Tables as Lisp Classes
+
+Lisp have a powerful Object-Oriented system, that integrates well with
+the database, when using the [[https://marijnhaverbeke.nl/postmodern/][Postmodern]] wrapper around
+PostgreSQL. A class would be implemented as follow:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defclass activity ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (title :col-type string :check (:<> 'title "")
+	  :initarg :title :accessor title)
+   (subtitle :col-type string :check (:<> 'subtitle "")
+	     :initarg :subtitle :accessor subtitle)
+   (sla :col-type integer :initarg :sla :accessor sla))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name activities))
+#+END_SRC
+
+So, using this format, the classes are implemented:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defclass card ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (creation-date :col-name creationDate :col-type timestamp
+		  :initarg :creation-date :accessor creation-date)
+   (patient-id :col-name patientId :col-type integer :col-references ((patients id))
+	       :initarg :patient-id :accessor patient-id)
+   (activity-id :col-name activityId :col-type integer :col-references ((activities id))
+		:initarg :activity-id :accessor activity-id)
+   (health-insurance-id :col-name healthInsuranceId :col-type integer :col-references ((healthInsurances id))
+			:initarg :health-insurance-id :accessor health-insurance-id)
+   (visit-id :col-name visitId :col-type integer
+	     :initarg :visit-id :accessor visit-id)
+   (bill-id :col-name billId :col-type integer :col-references ((bills id))
+	    :initarg :bill-id :accessor bill-id)
+   (sla-status :accessor sla-status)
+   (n-pends :accessor n-pends)
+   (n-open-pends :accessor n-open-pends)
+   (n-docs :accessor n-docs)
+   (n-not-received-docs :accessor n-not-received-docs)
+   (n-checlist-item :accessor n-checlist-item)
+   (n-done-checlist-item :accessor n-done-checlist-item))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name cards))
+
+(defclass health-insurance ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (name :col-type string :check (:<> 'name "")
+	  :initarg :name :accessor name))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name healthInsurances))
+
+(defclass patient ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (name :col-type string :check (:<> 'name "")
+	  :initarg :name :accessor name))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name patients))
+
+(defclass bill ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (type-id :col-name typeId :col-type integer :col-references ((billTypes id))
+	       :initarg :type-id :accessor type-id)
+   (total-amount :col-name totalAmount :col-type float
+		 :initarg :total-amount :accessor total-amount)
+   (type-name :accessor type-name))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name bills))
+#+END_SRC
+
+Note that would be possible to implement the desired functionalities defining
+just these classes, but to give the system more power, but to automate
+the process of inserting item, the remaining tables are also going to
+be implemented as classes.
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defclass bill-type ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (name :col-type string :check (:<> 'name "")
+	 :initarg :name :accessor name))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name billTypes))
+
+(defclass cards-pendencies ()
+  ((card-id :col-name cardId :col-type integer :col-references ((cards id))
+	       :initarg :card-id :accessor card-id)
+   (pendency-id :col-name pendencyID :col-type integer :col-references ((pendecies id))
+	       :initarg :pendency-id :accessor pendency-id))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name cardsPendencies))
+
+(defclass cards-documents ()
+  ((card-id :col-name cardId :col-type integer :col-references ((cards id))
+	       :initarg :card-id :accessor card-id)
+   (document-id :col-name documentID :col-type integer :col-references ((documents id))
+	       :initarg :document-id :accessor document-id))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name cardsDocuments))
+
+(defclass cards-checklist-item ()
+  ((card-id :col-name cardId :col-type integer :col-references ((cards id))
+	       :initarg :card-id :accessor card-id)
+   (checklist-item-id :col-name checklistItemID :col-type integer :col-references ((checklistItems id))
+	       :initarg :checklist-item-id :accessor checklist-item-id))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name cardsChecklistItem))
+
+(defclass pendency ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (openp :col-name open :col-type boolean :initarg :openp :accessor openp))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name pendencies))
+
+(defclass documents ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (not-receivedp :col-name notReceived :col-type boolean :initarg :not-receivedp :accessor not-receivedp))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name pendencies))
+
+(defclass checklist-item ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (donep :col-name done :col-type boolean :initarg :donep :accessor donep))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name checklistItems))
+#+END_SRC
+
+It is also interesting to observe that all the tables in the database
+could be created by just calling the function =dao-table-definition=
+and passing these classes as arguments. The SQL generated when this
+occurs is:
+
+#+BEGIN_SRC lisp :exports both :wrap src sql
+(dao-table-definition 'card)
+#+END_SRC
+
+#+RESULTS:
+#+BEGIN_src sql
+CREATE TABLE cards (id INTEGER NOT NULL, creation_date TIMESTAMP NOT NULL, patient_id INTEGER NOT NULL, activity_id INTEGER NOT NULL, health_insurance_id INTEGER NOT NULL, visit_id INTEGER NOT NULL, bill_id INTEGER NOT NULL, PRIMARY KEY (id))
+#+END_src
