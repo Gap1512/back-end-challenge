@@ -1,7 +1,8 @@
 (in-package :back-end)
 
 (defclass activity ()
-  ((id :col-type integer :col-identity t :accessor id)
+  ((id :col-type integer :col-identity t
+       :initarg :id :accessor id)
    (title :col-type string :check (:<> 'title "")
 	  :initarg :title :accessor title)
    (subtitle :col-type string :check (:<> 'subtitle "")
@@ -25,7 +26,6 @@
 	     :initarg :visit-id :accessor visit-id)
    (bill-id :col-name billId :col-type integer :col-references ((bills id))
 	    :initarg :bill-id :accessor bill-id)
-   (sla-status :accessor sla-status)
    (n-pends :accessor n-pends)
    (n-open-pends :accessor n-open-pends)
    (n-docs :accessor n-docs)
@@ -118,3 +118,27 @@
   (:metaclass dao-class)
   (:keys id)
   (:table-name checklistItems))
+
+(defmacro defjson (class &body definitions)
+  (let ((object (gensym)))
+    `(defmethod %to-json ((,object ,class))
+       (with-slots ,(mapcar #'second definitions) ,object
+	 (with-object
+	   ,@(mapcar #'(lambda (definition)
+			 `(write-key-value ,(first definition)
+					   ,(second definition)))
+		     definitions))))))
+
+(defjson activity
+  ("activityId" id)
+  ("activityTitle" title)
+  ("activitySubtitle" subtitle)
+  ("sla" sla))
+
+(defjson patient
+  ("patientId" id)
+  ("name" name))
+
+(defjson health-insurance
+  ("healthInsuranceId" id)
+  ("name" name))

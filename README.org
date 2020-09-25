@@ -50,3 +50,9 @@ pressing Alt+X and typing =slime=) and run the following command:
 
 This will download and install every dependency of the project. The
 implementation process of this step is documented in [[file:server/][server/]].
+
+Execute this command to get the server up and running (on port 9003): 
+
+#+BEGIN_SRC lisp
+(clack:clackup (make-clack-app) :port 9003)
+#+END_SRC

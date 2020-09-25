@@ -36,7 +36,8 @@ PostgreSQL. A class would be implemented as follow:
 
 #+BEGIN_SRC lisp :tangle classes.lisp
 (defclass activity ()
-  ((id :col-type integer :col-identity t :accessor id)
+  ((id :col-type integer :col-identity t
+       :initarg :id :accessor id)
    (title :col-type string :check (:<> 'title "")
 	  :initarg :title :accessor title)
    (subtitle :col-type string :check (:<> 'subtitle "")
@@ -46,6 +47,9 @@ PostgreSQL. A class would be implemented as follow:
   (:keys id)
   (:table-name activities))
 #+END_SRC
+
+#+RESULTS:
+: #<DAO-CLASS BACK-END::ACTIVITY>
 
 So, using this format, the classes are implemented:
 
@@ -64,7 +68,6 @@ So, using this format, the classes are implemented:
 	     :initarg :visit-id :accessor visit-id)
    (bill-id :col-name billId :col-type integer :col-references ((bills id))
 	    :initarg :bill-id :accessor bill-id)
-   (sla-status :accessor sla-status)
    (n-pends :accessor n-pends)
    (n-open-pends :accessor n-open-pends)
    (n-docs :accessor n-docs)
@@ -102,6 +105,9 @@ So, using this format, the classes are implemented:
   (:keys id)
   (:table-name bills))
 #+END_SRC
+
+#+RESULTS:
+: #<DAO-CLASS BACK-END::BILL>
 
 Note that would be possible to implement the desired functionalities defining
 just these classes, but to give the system more power, but to automate
@@ -189,6 +195,7 @@ following SQL script:
 #+BEGIN_SRC sql
 CREATE USER lisp WITH PASSWORD 'lisp';
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO lisp;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lisp;
 #+END_SRC
 
 So Lisp can connect like in the following example, that returns the
@@ -201,3 +208,187 @@ card with =id= equals 1:
 
 #+RESULTS:
 : #<CARD {10042A0863}>
+
+* Server setup
+
+Putting that to rest for a while, we start to setup the back-end
+server, creating the endpoints. For it, we will use three
+packages. One gives us a web application environment, the other a URL
+router for Common Lisp, designed around REST web services and the
+last, JSON encoder/decoder. The packages in question are [[https://github.com/fukamachi/clack][Clack]], [[https://github.com/joaotavora/snooze][Snooze]]
+and [[https://github.com/Rudolph-Miller/jonathan][Jonathan]]. If you already ensued to quicklisp to load this project,
+both should be ready.
+
+To make the test process easier, we define a global variable,
+=*activities*= to serve as our database, for now. We populate it with
+some values.
+
+#+BEGIN_SRC lisp
+(defvar *activities*
+  (loop for (title subtitle sla)
+     in '(("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3))
+     collecting (make-instance 'activity :id -1 :title title :subtitle subtitle :sla sla)))
+#+END_SRC
+
+#+RESULTS:
+: *ACTIVITIES*
+
+Next, the method that converts the activity object into JSON is
+defined:
+
+#+BEGIN_SRC lisp
+(defmethod %to-json ((activity activity))
+  (with-slots (id title subtitle sla) activity
+    (with-object
+      (write-key-value "activityId" id)
+      (write-key-value "activityTitle" title)
+      (write-key-value "activitySubtitle" subtitle)
+      (write-key-value "sla" sla))))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (ACTIVITY) {100532BAA3}>
+
+We will start by defining the routes, in a top-level fashion
+implementation. First, to establish a route that get all activities,
+we have something like:
+
+#+BEGIN_SRC lisp
+(defroute activities (:get :text/*)
+	  (to-json *activities*))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::ACTIVITIES (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {1006BB0D53}>
+
+Running this command to make a server, we already see a response:
+
+#+BEGIN_SRC lisp
+(clack:clackup (make-clack-app) :port 9003)
+#+END_SRC
+
+#+RESULTS:
+: #S(CLACK.HANDLER::HANDLER
+:    :SERVER :HUNCHENTOOT
+:    :ACCEPTOR #<SB-THREAD:THREAD "clack-handler-hunchentoot" RUNNING
+:                 {10076FD263}>)
+
+When making a GET request:
+
+#+BEGIN_SRC sh :results value verbatim :wrap src js
+curl localhost:9003/activities
+#+END_SRC
+
+#+RESULTS:
+#+BEGIN_src js
+[{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3}]
+#+END_src
+
+So, we define a macro, to avoid repeating the same pattern. We want to
+write:
+
+#+BEGIN_SRC lisp :eval no
+(defjson 'activity
+  ("activityId" id)
+  ("activityTitle" title))
+#+END_SRC
+
+And it should expand into:
+
+#+BEGIN_SRC lisp :eval no
+(defmethod %to-json ((#:G806 activity))
+  (with-slots (id title subtitle sla) #:G806
+    (with-object
+      (write-key-value "activityId" id)
+      (write-key-value "activityTitle" title))))
+#+END_SRC
+
+This macro is defined as follows:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defmacro defjson (class &body definitions)
+  (let ((object (gensym)))
+    `(defmethod %to-json ((,object ,class))
+       (with-slots ,(mapcar #'second definitions) ,object
+	 (with-object
+	   ,@(mapcar #'(lambda (definition)
+			 `(write-key-value ,(first definition)
+					   ,(second definition)))
+		     definitions))))))
+#+END_SRC
+
+#+RESULTS:
+: DEFJSON
+
+Thus, it's easy to define the necessary =to-json= methods, with just a
+few lines of code:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defjson activity
+  ("activityId" id)
+  ("activityTitle" title)
+  ("activitySubtitle" subtitle)
+  ("sla" sla))
+
+(defjson patient
+  ("patientId" id)
+  ("name" name))
+
+(defjson health-insurance
+  ("healthInsuranceId" id)
+  ("name" name))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (HEALTH-INSURANCE) {1005CCCE23}>
+
+The =card= class will not receive a json encoding representation,
+having in mind the fact that some computation is needed in between the
+selection from the database and the return to the user.
+
+So, to get rid of the =*activities*= variable, declared before, and
+get the actual registers on the database, we write:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defvar *config* '("challenge" "lisp" "lisp" "localhost"))
+
+(defroute activities (:get :text/*)
+	  (with-connection *config*
+	    (to-json (select-dao 'activity))))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::ACTIVITIES (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {10077F9333}>
+
+Simple as that. So when running the following command we get the
+right response:
+
+#+BEGIN_SRC sh :results value verbatim :wrap src js :eval no
+curl localhost:9003/activities
+#+END_SRC
+
+The activity creation endpoint is also straightforward:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defroute activity (:post "application/json")
+	  (with-connection *config*
+	    (let* ((json (handler-case
+			     (parse (payload-as-string) :as :plist)
+			   (error (e)
+			     (http-condition 400 "Malformed JSON (~a)!" e))))
+		   (act (insert-dao (make-instance 'activity
+				       :title (getf json :|activityTitle|)
+				       :subtitle (getf json :|activitySubtitle|)
+				       :sla (getf json :|sla|)))))
+	      (with-output-to-string (s)
+		(format s "Index: ~a" (id act))))))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::ACTIVITY (SNOOZE-VERBS:POST
+:                                       SNOOZE-TYPES:APPLICATION/JSON) {1002BA58C3}>
