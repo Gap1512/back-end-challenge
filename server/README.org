@@ -282,15 +282,23 @@ we have something like:
 
 Running this command to make a server, we already see a response:
 
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun start-server (port)
+  (clack:clackup (make-clack-app) :port port))
+#+END_SRC
+
+#+RESULTS:
+: START-SERVER
+
 #+BEGIN_SRC lisp
-(clack:clackup (make-clack-app) :port 9003)
+(start-server 9003)
 #+END_SRC
 
 #+RESULTS:
 : #S(CLACK.HANDLER::HANDLER
 :    :SERVER :HUNCHENTOOT
 :    :ACCEPTOR #<SB-THREAD:THREAD "clack-handler-hunchentoot" RUNNING
-:                 {100541D263}>)
+:                 {1005ECBA23}>)
 
 When making a GET request:
 
@@ -456,37 +464,73 @@ a few notable differences.
 3. After selection, some calculations are performed, by the =:after=
    method.
 
-So, defining a function to retrive an item is as follow:
+So, defining a function in SQL to retrive an item is as follow:
 
-#+BEGIN_SRC lisp :tangle back-end.lisp
-(defun get-cards (&key (page 0) (per-page 20))
-  (with-connection *config*
-    (query-dao 'card-result
-     "SELECT c.id, 
-	CURRENT_DATE - DATE(c.creationDate) AS daysSinceCreated,
+#+BEGIN_SRC sql :tangle "../database/scripts/tables_creation.sql"
+CREATE OR REPLACE FUNCTION getCards(lim int, offs int, 
+									act int, pat text, vis int, bil int, 
+									toReceive boolean, toSend boolean) 
+RETURNS TABLE (id integer,
+			   daysSinceCreated integer,
+			  sla integer,
+			  patientId integer,
+			  healthInsuranceId integer,
+			  visitId integer,
+			  billId integer,
+			  billType text,
+			  totalAmount real,
+			  numberOfPendencies bigint,
+			  numberOfOpenPendencies bigint,
+			  numberOfnumberOfDocuments bigint,
+			  numberOfNotReceivedDocuments bigint,
+			  numberOfChecklistItem bigint,
+			  numberOfDoneChecklistItem bigint
+			  ) AS
+$func$
+BEGIN
+RETURN QUERY 
+SELECT c.id, 
+	CURRENT_DATE - DATE(c.creationDate),
 	a.sla, c.patientId, c.healthInsuranceId,
-	c.visitId, c.billId,
-	bt.name AS billType, b.totalAmount,
-	COUNT(pend.id) AS numberOfPendencies,
-	COUNT(pend.open) AS numberOfOpenPendencies,
-	COUNT(d.id) AS numberOfnumberOfDocuments,
-	COUNT(d.notReceived) AS numberOfNotReceivedDocuments,
-	COUNT(ci.id) AS numberOfChecklistItem,
-	COUNT(ci.done) AS numberOfDoneChecklistItem
-      FROM cards c
+	c.visitId, c.billId, bt.name, b.totalAmount, 
+	COUNT(pend.id),	COUNT(pend.open), COUNT(d.id), COUNT(d.notReceived),
+	COUNT(ci.id), COUNT(ci.done)
+FROM cards c
 	JOIN activities a ON (a.id = c.activityId)
 	JOIN bills b ON (b.id = c.billId)
 	JOIN billTypes bt ON (bt.id = b.typeId)
-        JOIN cardsPendencies cp ON (cp.cardId = c.id)
+    JOIN cardsPendencies cp ON (cp.cardId = c.id)
 	JOIN pendencies pend ON (cp.pendencyId = pend.id)
-        JOIN cardsDocuments cd ON (cd.cardId = c.id)
+    JOIN cardsDocuments cd ON (cd.cardId = c.id)
 	JOIN documents d ON (cd.documentId = d.id)
-        JOIN cardsChecklistItem cci ON (cci.cardId = c.id)
+    JOIN cardsChecklistItem cci ON (cci.cardId = c.id)
 	JOIN checklistItems ci ON (cci.checklistItemId = ci.id)
-      GROUP BY c.id, bt.name, b.totalamount, a.sla
-      LIMIT $1
-      OFFSET $2"
-     per-page (* page per-page))))
+	JOIN patients p ON (c.patientId = p.id)
+WHERE 
+	(act IS NULL OR c.activityId = act)  AND
+	(pat IS NULL OR p.name = pat)        AND 
+	(vis IS NULL OR c.visitId = vis)     AND
+	(bil IS NULL OR c.billId = bil)      AND
+	(NOT toReceive OR d.notReceived)     AND
+	(NOT toSend OR ((NOT d.notReceived)  AND (ci.done) AND (NOT pend.open)))
+    GROUP BY c.id, bt.name, b.totalamount, a.sla
+    LIMIT lim
+    OFFSET offs;
+END
+$func$
+LANGUAGE plpgsql;
+#+END_SRC
+
+And in Lisp we define:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun get-cards (&key (page 0) (per-page 20)
+		    (activity-id :null) (patient-name :null)
+		    (visit-id :null) (bill-id :null) (to-receive nil)
+		    (to-send nil))
+  (with-connection *config*
+    (query-dao 'card-result "SELECT * FROM getCards($1, $2, $3, $4, $5, $6, $7, $8)"
+	       per-page (* page per-page) activity-id patient-name visit-id bill-id to-receive to-send)))
 #+END_SRC
 
 #+RESULTS:
@@ -589,6 +633,18 @@ instantiation:
 Thus, the endpoint can be implemented:
 
 #+BEGIN_SRC lisp :tangle back-end.lisp
-(defroute cards (:get :text/*)
-	  (to-json (make-instance 'cards-result :cards-list (get-cards))))
+(defroute cards (:get "text/*" &key (page 0) (perPage 20)
+		      (activityId :null) (patientName :null) (visitId :null)
+		      (billId :null) (filter "PRIORITY"))
+	  (to-json (make-instance 'cards-result
+				  :cards-list (get-cards :page page :per-page perPage
+							 :activity-id activityId
+							 :patient-name patientName
+							 :visit-id visitId
+							 :bill-id billId
+							 :to-receive (string= filter "TO_RECEIVE")
+							 :to-send (string= filter "TO_SEND")))))
 #+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::CARDS (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {100580B733}>

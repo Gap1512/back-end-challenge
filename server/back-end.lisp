@@ -1,5 +1,8 @@
 (in-package :back-end)
 
+(defun start-server (port)
+  (clack:clackup (make-clack-app) :port port))
+
 (defvar *config* '("challenge" "lisp" "lisp" "localhost"))
 
 (defroute activities (:get :text/*)
@@ -26,3 +29,40 @@
 			    (http-condition 400 "Invalid Entry (~a)!" e)))))
 	      (with-output-to-string (s)
 		(format s "Index: ~a" (id act))))))
+
+(defmethod explain-condition ((condition http-condition)
+			      (resource t)
+			      (ct snooze-types:text/html))
+  (with-output-to-string (s)
+    (format s "~a" condition)))
+
+(defun get-cards (&key (page 0) (per-page 20)
+		    (activity-id :null) (patient-name :null)
+		    (visit-id :null) (bill-id :null) (to-receive nil)
+		    (to-send nil))
+  (with-connection *config*
+    (query-dao 'card-result "SELECT * FROM getCards($1, $2, $3, $4, $5, $6, $7, $8)"
+	       per-page (* page per-page) activity-id patient-name visit-id bill-id to-receive to-send)))
+
+(defun get-sla-status (sla days)
+  (cond
+    ((> days sla) "DELAYED")
+    ((< days (* 0.75 sla)) "WARNING")
+    (t "OK")))
+
+(defun get-item (class id)
+  (with-connection *config*
+    (get-dao class id)))
+  
+(defun get-patient (id)
+  (get-item 'patient id))
+
+(defun get-health-insurance (id)
+  (get-item 'health-insurance id))
+
+(defroute cards (:get "text/*" &key (page 0) (perPage 20)
+		      (activityId :null) (patientName :null) (visitId :null)
+		      (billId :null) (filter "PRIORITY"))
+	  
+	  "Teste")
+					;(to-json (make-instance 'cards-result :cards-list (get-cards))))

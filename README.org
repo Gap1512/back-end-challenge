@@ -62,5 +62,5 @@ implementation process of this step is documented in [[file:server/][server/]].
 Execute this command to get the server up and running (on port 9003): 
 
 #+BEGIN_SRC lisp
-(clack:clackup (make-clack-app) :port 9003)
+(start-server 9003)
 #+END_SRC

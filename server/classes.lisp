@@ -22,29 +22,47 @@
    (visit-id :col-name visitId :col-type integer
 	     :initarg :visit-id :accessor visit-id)
    (bill-id :col-name billId :col-type integer :col-references ((bills id))
-	    :initarg :bill-id :accessor bill-id)
-   (n-pends :accessor n-pends)
-   (n-open-pends :accessor n-open-pends)
-   (n-docs :accessor n-docs)
-   (n-not-received-docs :accessor n-not-received-docs)
-   (n-checlist-item :accessor n-checlist-item)
-   (n-done-checlist-item :accessor n-done-checlist-item))
+	    :initarg :bill-id :accessor bill-id))
   (:metaclass dao-class)
   (:keys id)
   (:table-name cards))
 
+(defclass card-result (card)
+  ((days-since-created :col-name daysSinceCreated :col-type integer
+		       :initarg :days-since-created :accessor days-since-created)
+   (sla :col-name sla :col-type integer
+	:initarg :sla :accessor sla)
+   (bill-type :col-name billType :col-type string
+	      :initarg :bill-type :accessor bill-type)
+   (total-amount :col-name totalAmount :col-type float
+	      :initarg :total-amount :accessor total-amount)
+   (n-pends :col-name numberOfPendencies :col-type integer
+	    :initarg :n-pends :accessor n-pends)
+   (n-open-pends :col-name numberOfOpenPendencies :col-type integer
+		 :initarg :n-open-pends :accessor n-open-pends)
+   (n-docs :col-name numberOfnumberOfDocuments :col-type integer
+	   :initarg :n-docs :accessor n-docs)
+   (n-not-received-docs :col-name numberOfNotReceivedDocuments :col-type integer
+			:initarg :n-not-received-docs :accessor n-not-received-docs)
+   (n-checlist-item :col-name numberOfChecklistItem :col-type integer
+		    :initarg :n-checklist-item :accessor n-checlist-item)
+   (n-done-checlist-item :col-name numberOfDoneChecklistItem :col-type integer
+			 :initarg :n-donechecklist-item :accessor n-done-checlist-item)
+   (sla-status :accessor sla-status)
+   (patient :accessor patient)
+   (health-insurance :accessor health-insurance))
+  (:metaclass dao-class))
+
 (defclass health-insurance ()
   ((id :col-type integer :col-identity t :accessor id)
-   (name :col-type string :check (:<> 'name "")
-	  :initarg :name :accessor name))
+   (name :col-type string :initarg :name :accessor name))
   (:metaclass dao-class)
   (:keys id)
   (:table-name healthInsurances))
 
 (defclass patient ()
   ((id :col-type integer :col-identity t :accessor id)
-   (name :col-type string :check (:<> 'name "")
-	  :initarg :name :accessor name))
+   (name :col-type string :initarg :name :accessor name))
   (:metaclass dao-class)
   (:keys id)
   (:table-name patients))
@@ -62,8 +80,7 @@
 
 (defclass bill-type ()
   ((id :col-type integer :col-identity t :accessor id)
-   (name :col-type string :check (:<> 'name "")
-	 :initarg :name :accessor name))
+   (name :col-type string :initarg :name :accessor name))
   (:metaclass dao-class)
   (:keys id)
   (:table-name billTypes))
@@ -139,3 +156,50 @@
 (defjson health-insurance
   ("healthInsuranceId" id)
   ("name" name))
+
+(defmethod initialize-instance :after ((result card-result) &key)
+  (with-slots (sla-status sla days-since-created patient patient-id health-insurance health-insurance-id)
+      result
+    (setf sla-status (get-sla-status sla days-since-created)
+	  patient (get-patient patient-id)
+	  health-insurance (get-health-insurance health-insurance-id))))
+
+(defjson card-result
+  ("daysSinceCreated" days-since-created)
+  ("slaStatus" sla-status)
+  ("patient" patient)
+  ("healthInsurance" health-insurance)
+  ("visitId" visit-id)
+  ("billId" bill-id)
+  ("billType" bill-type)
+  ("totalAmount" total-amount)
+  ("numberOfPendencies" n-pends)
+  ("numberOfOpenPendencies" n-open-pends)
+  ("numberOfDocuments" n-docs)
+  ("numberOfNotReceivedDocuments" n-not-received-docs)
+  ("numberOfChecklistItem" n-checlist-item)
+  ("numberOfDoneChecklistItem" n-done-checlist-item))
+
+(defclass cards-result ()
+  ((cards-list :initarg :cards-list :accessor cards-list)
+   (total-cards-ok :accessor total-cards-ok)
+   (total-cards-warning :accessor total-cards-warning)
+   (total-cards-delayed :accessor total-cards-delayed)))
+
+(defjson cards-result
+  ("cards" cards-list)
+  ("totalCardsOk" total-cards-ok)
+  ("totalCardsWarning" total-cards-warning)
+  ("totalCardsDelayed" total-cards-delayed))
+
+(defmethod initialize-instance :after ((result cards-result) &key)
+  (with-slots (cards-list total-cards-ok total-cards-warning total-cards-delayed)
+      result
+    (loop for card-result in cards-list
+       for sla-status = (sla-status card-result)
+       counting (string= "OK" sla-status) into ok
+       counting (string= "WARNING" sla-status) into warning
+       counting (string= "DELAYED" sla-status) into delayed
+       finally (setf total-cards-ok ok
+		     total-cards-warning warning
+		     total-cards-delayed delayed))))
