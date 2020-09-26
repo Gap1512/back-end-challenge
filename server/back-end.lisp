@@ -12,9 +12,17 @@
 			     (parse (payload-as-string) :as :plist)
 			   (error (e)
 			     (http-condition 400 "Malformed JSON (~a)!" e))))
-		   (act (insert-dao (make-instance 'activity
-				       :title (getf json :|activityTitle|)
-				       :subtitle (getf json :|activitySubtitle|)
-				       :sla (getf json :|sla|)))))
+		   (act (handler-case (insert-dao
+				       (let ((title (getf json :|activityTitle|))
+					     (subtitle (getf json :|activitySubtitle|))
+					     (sla (getf json :|sla|)))
+					 (if (and title subtitle sla)
+					     (make-instance 'activity
+							    :title title
+							    :subtitle subtitle
+							    :sla sla)
+					     (error "Missing fields"))))
+			  (error (e)
+			    (http-condition 400 "Invalid Entry (~a)!" e)))))
 	      (with-output-to-string (s)
 		(format s "Index: ~a" (id act))))))

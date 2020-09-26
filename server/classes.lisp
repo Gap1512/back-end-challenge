@@ -1,12 +1,9 @@
 (in-package :back-end)
 
 (defclass activity ()
-  ((id :col-type integer :col-identity t
-       :initarg :id :accessor id)
-   (title :col-type string :check (:<> 'title "")
-	  :initarg :title :accessor title)
-   (subtitle :col-type string :check (:<> 'subtitle "")
-	     :initarg :subtitle :accessor subtitle)
+  ((id :col-type integer :col-identity t :initarg :id :accessor id)
+   (title :col-type string :initarg :title :accessor title)
+   (subtitle :col-type string :initarg :subtitle :accessor subtitle)
    (sla :col-type integer :initarg :sla :accessor sla))
   (:metaclass dao-class)
   (:keys id)

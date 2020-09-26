@@ -2,22 +2,27 @@ CREATE TABLE IF NOT EXISTS Activities (
        id SERIAL PRIMARY KEY,
        title TEXT NOT NULL,
        subtitle TEXT NOT NULL,
-       sla INTEGER NOT NULL
+       sla INTEGER NOT NULL,
+       CHECK (title <> ''),
+       CHECK (subtitle <> '')
 );
 
 CREATE TABLE IF NOT EXISTS HealthInsurances (
        id SERIAL PRIMARY KEY,
-       name TEXT NOT NULL
+       name TEXT NOT NULL,
+       CHECK (name <> '')
 );
 
 CREATE TABLE IF NOT EXISTS Patients (
        id SERIAL PRIMARY KEY,
-       name TEXT NOT NULL
+       name TEXT NOT NULL,
+       CHECK (name <> '')
 );
 
 CREATE TABLE IF NOT EXISTS BillTypes (
        id SERIAL PRIMARY KEY,
-       name TEXT NOT NULL
+       name TEXT NOT NULL,
+       CHECK (name <> '')
 );
 
 CREATE TABLE IF NOT EXISTS Pendencies (

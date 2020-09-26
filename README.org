@@ -34,6 +34,14 @@ found at [[file:database/scripts/][database/scripts/]], I encourage the reader t
 =README.org= file. Thus, the tables are created by running [[file:database/scripts/table_creation.sql][this script]]
 and they are populated by running [[file:database/scripts/tables_insertions.sql][this other script]].
 
+And add the lisp user:
+
+#+BEGIN_SRC sql
+CREATE USER lisp WITH PASSWORD 'lisp';
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO lisp;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lisp;
+#+END_SRC
+
 * Back-end Server
 
 Next, it is necessary to have Common Lisp installed, along with

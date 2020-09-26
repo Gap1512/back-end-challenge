@@ -36,12 +36,9 @@ PostgreSQL. A class would be implemented as follow:
 
 #+BEGIN_SRC lisp :tangle classes.lisp
 (defclass activity ()
-  ((id :col-type integer :col-identity t
-       :initarg :id :accessor id)
-   (title :col-type string :check (:<> 'title "")
-	  :initarg :title :accessor title)
-   (subtitle :col-type string :check (:<> 'subtitle "")
-	     :initarg :subtitle :accessor subtitle)
+  ((id :col-type integer :col-identity t :initarg :id :accessor id)
+   (title :col-type string :initarg :title :accessor title)
+   (subtitle :col-type string :initarg :subtitle :accessor subtitle)
    (sla :col-type integer :initarg :sla :accessor sla))
   (:metaclass dao-class)
   (:keys id)
@@ -276,7 +273,7 @@ Running this command to make a server, we already see a response:
 : #S(CLACK.HANDLER::HANDLER
 :    :SERVER :HUNCHENTOOT
 :    :ACCEPTOR #<SB-THREAD:THREAD "clack-handler-hunchentoot" RUNNING
-:                 {10076FD263}>)
+:                 {100541D263}>)
 
 When making a GET request:
 
@@ -381,10 +378,18 @@ The activity creation endpoint is also straightforward:
 			     (parse (payload-as-string) :as :plist)
 			   (error (e)
 			     (http-condition 400 "Malformed JSON (~a)!" e))))
-		   (act (insert-dao (make-instance 'activity
-				       :title (getf json :|activityTitle|)
-				       :subtitle (getf json :|activitySubtitle|)
-				       :sla (getf json :|sla|)))))
+		   (act (handler-case (insert-dao
+				       (let ((title (getf json :|activityTitle|))
+					     (subtitle (getf json :|activitySubtitle|))
+					     (sla (getf json :|sla|)))
+					 (if (and title subtitle sla)
+					     (make-instance 'activity
+							    :title title
+							    :subtitle subtitle
+							    :sla sla)
+					     (error "Missing fields"))))
+			  (error (e)
+			    (http-condition 400 "Invalid Entry (~a)!" e)))))
 	      (with-output-to-string (s)
 		(format s "Index: ~a" (id act))))))
 #+END_SRC
@@ -392,3 +397,5 @@ The activity creation endpoint is also straightforward:
 #+RESULTS:
 : #<STANDARD-METHOD BACK-END::ACTIVITY (SNOOZE-VERBS:POST
 :                                       SNOOZE-TYPES:APPLICATION/JSON) {1002BA58C3}>
+
+To test it, a software called [[https://insomnia.rest/download/][Insomnia]] was used.
