@@ -64,29 +64,47 @@ So, using this format, the classes are implemented:
    (visit-id :col-name visitId :col-type integer
 	     :initarg :visit-id :accessor visit-id)
    (bill-id :col-name billId :col-type integer :col-references ((bills id))
-	    :initarg :bill-id :accessor bill-id)
-   (n-pends :accessor n-pends)
-   (n-open-pends :accessor n-open-pends)
-   (n-docs :accessor n-docs)
-   (n-not-received-docs :accessor n-not-received-docs)
-   (n-checlist-item :accessor n-checlist-item)
-   (n-done-checlist-item :accessor n-done-checlist-item))
+	    :initarg :bill-id :accessor bill-id))
   (:metaclass dao-class)
   (:keys id)
   (:table-name cards))
 
+(defclass card-result (card)
+  ((days-since-created :col-name daysSinceCreated :col-type integer
+		       :initarg :days-since-created :accessor days-since-created)
+   (sla :col-name sla :col-type integer
+	:initarg :sla :accessor sla)
+   (bill-type :col-name billType :col-type string
+	      :initarg :bill-type :accessor bill-type)
+   (total-amount :col-name totalAmount :col-type float
+	      :initarg :total-amount :accessor total-amount)
+   (n-pends :col-name numberOfPendencies :col-type integer
+	    :initarg :n-pends :accessor n-pends)
+   (n-open-pends :col-name numberOfOpenPendencies :col-type integer
+		 :initarg :n-open-pends :accessor n-open-pends)
+   (n-docs :col-name numberOfnumberOfDocuments :col-type integer
+	   :initarg :n-docs :accessor n-docs)
+   (n-not-received-docs :col-name numberOfNotReceivedDocuments :col-type integer
+			:initarg :n-not-received-docs :accessor n-not-received-docs)
+   (n-checlist-item :col-name numberOfChecklistItem :col-type integer
+		    :initarg :n-checklist-item :accessor n-checlist-item)
+   (n-done-checlist-item :col-name numberOfDoneChecklistItem :col-type integer
+			 :initarg :n-donechecklist-item :accessor n-done-checlist-item)
+   (sla-status :accessor sla-status)
+   (patient :accessor patient)
+   (health-insurance :accessor health-insurance))
+  (:metaclass dao-class))
+
 (defclass health-insurance ()
   ((id :col-type integer :col-identity t :accessor id)
-   (name :col-type string :check (:<> 'name "")
-	  :initarg :name :accessor name))
+   (name :col-type string :initarg :name :accessor name))
   (:metaclass dao-class)
   (:keys id)
   (:table-name healthInsurances))
 
 (defclass patient ()
   ((id :col-type integer :col-identity t :accessor id)
-   (name :col-type string :check (:<> 'name "")
-	  :initarg :name :accessor name))
+   (name :col-type string :initarg :name :accessor name))
   (:metaclass dao-class)
   (:keys id)
   (:table-name patients))
@@ -114,8 +132,7 @@ be implemented as classes.
 #+BEGIN_SRC lisp :tangle classes.lisp
 (defclass bill-type ()
   ((id :col-type integer :col-identity t :accessor id)
-   (name :col-type string :check (:<> 'name "")
-	 :initarg :name :accessor name))
+   (name :col-type string :initarg :name :accessor name))
   (:metaclass dao-class)
   (:keys id)
   (:table-name billTypes))
@@ -392,10 +409,186 @@ The activity creation endpoint is also straightforward:
 			    (http-condition 400 "Invalid Entry (~a)!" e)))))
 	      (with-output-to-string (s)
 		(format s "Index: ~a" (id act))))))
+
+(defmethod explain-condition ((condition http-condition)
+			      (resource t)
+			      (ct snooze-types:text/html))
+  (with-output-to-string (s)
+    (format s "~a" condition)))
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD BACK-END::ACTIVITY (SNOOZE-VERBS:POST
-:                                       SNOOZE-TYPES:APPLICATION/JSON) {1002BA58C3}>
+: #<STANDARD-METHOD SNOOZE:EXPLAIN-CONDITION (HTTP-CONDITION T
+:                                                            SNOOZE-TYPES:TEXT/HTML) {1008607523}>
 
-To test it, a software called [[https://insomnia.rest/download/][Insomnia]] was used.
+The request can be made by running the following command on shell:
+
+#+BEGIN_SRC sh :results value verbatim
+curl --header "Content-Type: application/json" \
+     --data "{\"activityTitle\":\"Teste\",\"activitySubtitle\":\"Teste\",\"sla\":3}" \
+     http://localhost:9003/activity
+#+END_SRC
+
+#+RESULTS:
+: Index: 9
+
+The validation of the fields is tested by removing a field, or putting
+an invalid value:
+
+#+BEGIN_SRC sh :results value verbatim
+curl --header "Content-Type: application/json" \
+     --data "{\"activityTitle\":\"Teste\",\"sla\":3}" \
+     http://localhost:9003/activity
+#+END_SRC
+
+#+RESULTS:
+: #<HTTP-CONDITION 400: Invalid Entry (Missing fields)!>
+
+And because of the method =explain-condition=, we get a nice error
+message whenever this occurs.
+
+Next, a simmilar logic is used to implement the =cards= endpoint, with
+a few notable differences.
+1. The query receive some parameters, used as filters to the database
+   selection;
+2. A paging system must be implemented. This is done by setting an
+   offset.
+3. After selection, some calculations are performed, by the =:after=
+   method.
+
+So, defining a function to retrive an item is as follow:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun get-cards (&key (page 0) (per-page 20))
+  (with-connection *config*
+    (query-dao 'card-result
+     "SELECT c.id, 
+	CURRENT_DATE - DATE(c.creationDate) AS daysSinceCreated,
+	a.sla, c.patientId, c.healthInsuranceId,
+	c.visitId, c.billId,
+	bt.name AS billType, b.totalAmount,
+	COUNT(pend.id) AS numberOfPendencies,
+	COUNT(pend.open) AS numberOfOpenPendencies,
+	COUNT(d.id) AS numberOfnumberOfDocuments,
+	COUNT(d.notReceived) AS numberOfNotReceivedDocuments,
+	COUNT(ci.id) AS numberOfChecklistItem,
+	COUNT(ci.done) AS numberOfDoneChecklistItem
+      FROM cards c
+	JOIN activities a ON (a.id = c.activityId)
+	JOIN bills b ON (b.id = c.billId)
+	JOIN billTypes bt ON (bt.id = b.typeId)
+        JOIN cardsPendencies cp ON (cp.cardId = c.id)
+	JOIN pendencies pend ON (cp.pendencyId = pend.id)
+        JOIN cardsDocuments cd ON (cd.cardId = c.id)
+	JOIN documents d ON (cd.documentId = d.id)
+        JOIN cardsChecklistItem cci ON (cci.cardId = c.id)
+	JOIN checklistItems ci ON (cci.checklistItemId = ci.id)
+      GROUP BY c.id, bt.name, b.totalamount, a.sla
+      LIMIT $1
+      OFFSET $2"
+     per-page (* page per-page))))
+#+END_SRC
+
+#+RESULTS:
+: GET-CARDS
+
+This query will return a table that contains almost everything we need
+to present the user. The result is transformed into a =card-result=
+object, and the method defined bellow executes after one object from
+this class is instantiated. This method fills the remaining slots:
+=sla-status=, =patient= and =health-insurance= with objects from the
+corresponding classes.
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defmethod initialize-instance :after ((result card-result) &key)
+  (with-slots (sla-status sla days-since-created patient patient-id health-insurance health-insurance-id)
+      result
+    (setf sla-status (get-sla-status sla days-since-created)
+	  patient (get-patient patient-id)
+	  health-insurance (get-health-insurance health-insurance-id))))
+#+END_SRC
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun get-sla-status (sla days)
+  (cond
+    ((> days sla) "DELAYED")
+    ((< days (* 0.75 sla)) "WARNING")
+    (t "OK")))
+
+(defun get-item (class id)
+  (with-connection *config*
+    (get-dao class id)))
+  
+(defun get-patient (id)
+  (get-item 'patient id))
+
+(defun get-health-insurance (id)
+  (get-item 'health-insurance id))
+#+END_SRC
+
+Finally, we need to define the =json= format of the =card-result=
+class, by doing:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defjson card-result
+  ("daysSinceCreated" days-since-created)
+  ("slaStatus" sla-status)
+  ("patient" patient)
+  ("healthInsurance" health-insurance)
+  ("visitId" visit-id)
+  ("billId" bill-id)
+  ("billType" bill-type)
+  ("totalAmount" total-amount)
+  ("numberOfPendencies" n-pends)
+  ("numberOfOpenPendencies" n-open-pends)
+  ("numberOfDocuments" n-docs)
+  ("numberOfNotReceivedDocuments" n-not-received-docs)
+  ("numberOfChecklistItem" n-checlist-item)
+  ("numberOfDoneChecklistItem" n-done-checlist-item))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (CARD-RESULT) {100743DD33}>
+
+And defining a class to represent the overall result:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defclass cards-result ()
+  ((cards-list :initarg :cards-list :accessor cards-list)
+   (total-cards-ok :accessor total-cards-ok)
+   (total-cards-warning :accessor total-cards-warning)
+   (total-cards-delayed :accessor total-cards-delayed)))
+
+(defjson cards-result
+  ("cards" cards-list)
+  ("totalCardsOk" total-cards-ok)
+  ("totalCardsWarning" total-cards-warning)
+  ("totalCardsDelayed" total-cards-delayed))
+#+END_SRC
+
+With the same strategy used before to modify the values after
+instantiation:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defmethod initialize-instance :after ((result cards-result) &key)
+  (with-slots (cards-list total-cards-ok total-cards-warning total-cards-delayed)
+      result
+    (loop for card-result in cards-list
+       for sla-status = (sla-status card-result)
+       counting (string= "OK" sla-status) into ok
+       counting (string= "WARNING" sla-status) into warning
+       counting (string= "DELAYED" sla-status) into delayed
+       finally (setf total-cards-ok ok
+		     total-cards-warning warning
+		     total-cards-delayed delayed))))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD COMMON-LISP:INITIALIZE-INSTANCE :AFTER (CARDS-RESULT) {100334CAC3}>
+
+Thus, the endpoint can be implemented:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defroute cards (:get :text/*)
+	  (to-json (make-instance 'cards-result :cards-list (get-cards))))
+#+END_SRC
