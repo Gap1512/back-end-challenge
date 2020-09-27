@@ -47,20 +47,21 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lisp;
 Next, it is necessary to have Common Lisp installed, along with
 =quicklisp=, to manage packages. This can be easily done by
 downloading [[https://portacle.github.io][Portacle]] and cloning this repository into the
-=local-projects= folder, inside =portacle/quicklisp/=.
+=local-projects= folder, inside =portacle/all/quicklisp/=.
 
-After done, it is necessary to execute Portacle, open Slime (by
-pressing Alt+X and typing =slime=) and run the following command:
+After done, it is necessary to execute Portacle and run the following
+command on the REPL:
 
 #+BEGIN_SRC lisp
 (ql:quickload :back-end)
 #+END_SRC
 
 This will download and install every dependency of the project. The
-implementation process of this step is documented in [[file:server/][server/]].
+implementation process of the server is documented in [[file:server/][server/]]. Again,
+it is highly recommendable that you read the =README.org= file.
 
 Execute this command to get the server up and running (on port 9003): 
 
 #+BEGIN_SRC lisp
-(start-server 9003)
+(back-end:start-server 9003)
 #+END_SRC
