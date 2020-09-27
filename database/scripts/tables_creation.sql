@@ -1,57 +1,83 @@
-CREATE OR REPLACE FUNCTION getCards(lim int, offs int, act int, pat text, vis int, bil int, 
-	  	  	   	    toReceive boolean, toSend boolean) 
-RETURNS TABLE (id integer,
-			  daysSinceCreated integer,
-			  sla integer,
-			  patientId integer,
-			  healthInsuranceId integer,
-			  visitId integer,
-			  billId integer,
-			  billType text,
-			  totalAmount real,
-			  numberOfPendencies bigint,
-			  numberOfOpenPendencies bigint,
-			  numberOfnumberOfDocuments bigint,
-			  numberOfNotReceivedDocuments bigint,
-			  numberOfChecklistItem bigint,
-			  numberOfDoneChecklistItem bigint
-			  ) AS
-$func$
-BEGIN
-RETURN QUERY 
-SELECT DISTINCT ON (c.id)
-	c.id,
-	CURRENT_DATE - DATE(c.creationDate),
-	a.sla, c.patientId, c.healthInsuranceId,
-	c.visitId, c.billId, bt.name, b.totalAmount,
-	COUNT(DISTINCT pend.id),	
-	COUNT(DISTINCT pend.id) FILTER (WHERE pend.open), 
-	COUNT(DISTINCT d.id), 
-	COUNT(DISTINCT d.id) FILTER (WHERE d.notReceived),
-	COUNT(DISTINCT ci.id), 
-	COUNT(DISTINCT ci.id) FILTER (WHERE ci.done)
-FROM cards c
-	JOIN activities a ON (a.id = c.activityId)
-	JOIN bills b ON (b.id = c.billId)
-	JOIN billTypes bt ON (bt.id = b.typeId)
-	LEFT OUTER JOIN patients p ON (c.patientId = p.id)
-    LEFT OUTER JOIN cardsPendencies cp ON (cp.cardId = c.id)
-	LEFT OUTER JOIN pendencies pend ON (cp.pendencyId = pend.id)
-    LEFT OUTER JOIN cardsDocuments cd ON (cd.cardId = c.id)
-	LEFT OUTER JOIN documents d ON (cd.documentId = d.id)
-    LEFT OUTER JOIN cardsChecklistItem cci ON (cci.cardId = c.id)
-	LEFT OUTER JOIN checklistItems ci ON (cci.checklistItemId = ci.id)
-WHERE
-	(act IS NULL OR c.activityId = act)  AND
-	(pat IS NULL OR p.name = pat)        AND
-	(vis IS NULL OR c.visitId = vis)     AND
-	(bil IS NULL OR c.billId = bil)      AND
-	(NOT toReceive OR d.notReceived)     AND
-	(NOT toSend OR ((NOT d.notReceived)  AND (ci.done) AND (NOT pend.open)))
-GROUP BY c.id, bt.name, b.totalamount, a.sla
-ORDER BY c.id DESC
-LIMIT lim
-OFFSET offs;
-END
-$func$
-LANGUAGE plpgsql;
+CREATE TABLE IF NOT EXISTS Activities (
+       id SERIAL PRIMARY KEY,
+       title TEXT NOT NULL,
+       subtitle TEXT NOT NULL,
+       sla INTEGER NOT NULL,
+       CHECK (title <> ''),
+       CHECK (subtitle <> '')
+);
+
+CREATE TABLE IF NOT EXISTS HealthInsurances (
+       id SERIAL PRIMARY KEY,
+       name TEXT NOT NULL,
+       CHECK (name <> '')
+);
+
+CREATE TABLE IF NOT EXISTS Patients (
+       id SERIAL PRIMARY KEY,
+       name TEXT NOT NULL,
+       CHECK (name <> '')
+);
+
+CREATE TABLE IF NOT EXISTS BillTypes (
+       id SERIAL PRIMARY KEY,
+       name TEXT NOT NULL,
+       CHECK (name <> '')
+);
+
+CREATE TABLE IF NOT EXISTS Pendencies (
+       id SERIAL PRIMARY KEY,
+       open BOOLEAN NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Documents (
+       id SERIAL PRIMARY KEY,
+       notReceived BOOLEAN NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ChecklistItems (
+       id SERIAL PRIMARY KEY,
+       done BOOLEAN NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Bills (
+       id SERIAL PRIMARY KEY,
+       typeId INTEGER NOT NULL,
+       totalAmount REAL NOT NULL,
+       FOREIGN KEY (typeId) REFERENCES BillTypes (id)
+);
+
+CREATE TABLE IF NOT EXISTS Cards (
+       id SERIAL PRIMARY KEY,
+       creationDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+       patientId INTEGER NOT NULL,
+       activityId INTEGER NOT NULL,
+       healthInsuranceId INTEGER NOT NULL,
+       visitId INTEGER NOT NULL,
+       billId INTEGER NOT NULL,
+       FOREIGN KEY (patientId) REFERENCES Patients (id),
+       FOREIGN KEY (activityId) REFERENCES Activities (id),
+       FOREIGN KEY (healthInsuranceId) REFERENCES HealthInsurances (id),
+       FOREIGN KEY (billId) REFERENCES Bills (id)
+);
+
+CREATE TABLE IF NOT EXISTS CardsPendencies (
+       cardId INTEGER NOT NULL,
+       pendencyId INTEGER NOT NULL,
+       FOREIGN KEY (cardId) REFERENCES Cards (id),
+       FOREIGN KEY (pendencyId) REFERENCES Pendencies (id)
+);
+
+CREATE TABLE IF NOT EXISTS CardsDocuments (
+       cardId INTEGER NOT NULL,
+       documentId INTEGER NOT NULL,
+       FOREIGN KEY (cardId) REFERENCES Cards (id),
+       FOREIGN KEY (documentId) REFERENCES Documents (id)
+);
+
+CREATE TABLE IF NOT EXISTS CardsChecklistItem (
+       cardId INTEGER NOT NULL,
+       checklistItemId INTEGER NOT NULL,
+       FOREIGN KEY (cardId) REFERENCES Cards (id),
+       FOREIGN KEY (checklistItemId) REFERENCES ChecklistItems (id)
+);

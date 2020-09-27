@@ -153,6 +153,12 @@
   ("healthInsuranceId" id)
   ("name" name))
 
+(defmethod explain-condition ((condition http-condition)
+			      (resource t)
+			      (ct snooze-types:text/html))
+  (with-output-to-string (s)
+    (format s "~a" condition)))
+
 (defmethod initialize-instance :after ((result card-result) &key)
   (with-slots (sla-status sla days-since-created patient patient-id health-insurance health-insurance-id)
       result
@@ -200,6 +206,25 @@
 		     total-cards-warning warning
 		     total-cards-delayed delayed))))
 
+(defgeneric to-dao (object parsed-plist)
+  (:documentation "Sets the slots of the object from a plist parsed from json"))
+
+(defmacro def-to-dao (class &body definitions)
+  (let ((o (gensym))
+	(p (gensym)))
+    `(defmethod to-dao ((,o ,class) ,p)
+       (with-slots ,(mapcar #'first definitions) ,o
+	 ,@(mapcar #'(lambda (def)
+		       (let ((x (gensym))
+			     (y (gensym)))
+			 `(let ((,x (getf ,p ,(second def)))
+				(,y ,(third def)))
+			    (setf ,(first def) (if ,y
+						   (slot-value (ensure ,(fourth def) ,x) ,y)
+						   ,x)))))
+		   definitions)
+	 ,o))))
+
 (def-to-dao activity
   (title :|title|)
   (subtitle :|subtitle|)
@@ -234,29 +259,3 @@
   (health-insurance-id :|healthInsurance| 'id 'health-insurance)
   (visit-id :|visitId|)
   (bill-id :|bill| 'id 'bill))
-
-(defroute card (:post "application/json")
-    (let* ((json (handler-case (parse (payload-as-string) :as :plist)
-		   (error (e)
-		     (http-condition 400 "Malformed JSON (~a)!" e))))
-	   (c (handler-case (ensure 'card json)
-		(error (e)
-		  (http-condition 400 "Invalid Entry (~a)!" e)))))
-      (let ((pendencies (getf json :|pendencies|))
-	    (documents (getf json :|documents|))
-	    (checklist-items (getf json :|checklistItems|))
-	    (card-id (id c)))
-	(n-to-n pendencies 'pendency 'cards-pendencies :pendency-id card-id)
-	(n-to-n documents 'documents 'cards-documents :document-id card-id)
-	(n-to-n checklist-items 'checklist-item 'cards-checklist-item :checklist-item-id card-id)
-      (with-output-to-string (s)
-	(format s "Index: ~a" card-id)))))
-
-(defun n-to-n (lst type-of-list class-relationship relationship-symbol card-id)
-  (with-connection *config*
-    (mapcar #'(lambda (item)
-		(let ((x (make-instance class-relationship
-					   relationship-symbol (id (ensure type-of-list item))
-					   :card-id card-id)))
-		(insert-dao x)))
-		lst)))

@@ -19,11 +19,17 @@ definitions all go to the desired package:
 (in-package :back-end)
 #+END_SRC
 
+#+RESULTS:
+: #<PACKAGE "BACK-END">
+
 On both =.lisp= files.
 
 #+BEGIN_SRC lisp :tangle classes.lisp :exports none
 (in-package :back-end)
 #+END_SRC
+
+#+RESULTS:
+: #<PACKAGE "BACK-END">
 
 Worth noting again, is that all the source code will be tangled into
 [[file:back-end.lisp][back-end.lisp]].
@@ -190,14 +196,14 @@ could be created by just calling the function =dao-table-definition=
 and passing these classes as arguments. The SQL generated when this
 occurs is:
 
-#+BEGIN_SRC lisp :exports both :wrap src sql
+#+BEGIN_SRC lisp :exports both :wrap example sql
 (dao-table-definition 'card)
 #+END_SRC
 
 #+RESULTS:
-#+BEGIN_src sql
+#+BEGIN_example sql
 CREATE TABLE cards (id INTEGER NOT NULL, creation_date TIMESTAMP NOT NULL, patient_id INTEGER NOT NULL, activity_id INTEGER NOT NULL, health_insurance_id INTEGER NOT NULL, visit_id INTEGER NOT NULL, bill_id INTEGER NOT NULL, PRIMARY KEY (id))
-#+END_src
+#+END_example
 
 * Lisp Connection To Database
 
@@ -205,7 +211,7 @@ In order to connect to the database, we must create a user for Lisp
 and granting all privileges to it. This is done by running the
 following SQL script:
 
-#+BEGIN_SRC sql
+#+BEGIN_SRC sql :eval no
 CREATE USER lisp WITH PASSWORD 'lisp';
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO lisp;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lisp;
@@ -220,7 +226,7 @@ card with =id= equals 1:
 #+END_SRC
 
 #+RESULTS:
-: #<CARD {10042A0863}>
+: #<CARD {1008EFDFA3}>
 
 * Server setup
 
@@ -265,7 +271,7 @@ defined:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (ACTIVITY) {100532BAA3}>
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (ACTIVITY) {1005D30243}>
 
 We will start by defining the routes, in a top-level fashion
 implementation. First, to establish a route that get all activities,
@@ -277,7 +283,7 @@ we have something like:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD BACK-END::ACTIVITIES (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {1006BB0D53}>
+: #<STANDARD-METHOD BACK-END::ACTIVITIES (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {1006056BB3}>
 
 Running this command to make a server, we already see a response:
 
@@ -297,18 +303,18 @@ Running this command to make a server, we already see a response:
 : #S(CLACK.HANDLER::HANDLER
 :    :SERVER :HUNCHENTOOT
 :    :ACCEPTOR #<SB-THREAD:THREAD "clack-handler-hunchentoot" RUNNING
-:                 {1005ECBA23}>)
+:                 {10060F0633}>)
 
 When making a GET request:
 
-#+BEGIN_SRC sh :results value verbatim :wrap src js
+#+BEGIN_SRC sh :results value verbatim :wrap example js
 curl localhost:9003/activities
 #+END_SRC
 
 #+RESULTS:
-#+BEGIN_src js
+#+BEGIN_example js
 [{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3}]
-#+END_src
+#+END_example
 
 So, we define a macro, to avoid repeating the same pattern. We want to
 write:
@@ -366,7 +372,7 @@ few lines of code:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (HEALTH-INSURANCE) {1005CCCE23}>
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (HEALTH-INSURANCE) {1006C60513}>
 
 The =card= class will not receive a json encoding representation,
 having in mind the fact that some computation is needed in between the
@@ -384,7 +390,7 @@ get the actual registers on the database, we write:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD BACK-END::ACTIVITIES (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {10077F9333}>
+: #<STANDARD-METHOD BACK-END::ACTIVITIES (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {1007009073}>
 
 Simple as that. So when running the following command we get the
 right response:
@@ -416,7 +422,13 @@ The activity creation endpoint is also straightforward:
 			    (http-condition 400 "Invalid Entry (~a)!" e)))))
 	      (with-output-to-string (s)
 		(format s "Index: ~a" (id act))))))
+#+END_SRC
 
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::ACTIVITY (SNOOZE-VERBS:POST
+:                                       SNOOZE-TYPES:APPLICATION/JSON) {100729A783}>
+
+#+BEGIN_SRC lisp :tangle classes.lisp
 (defmethod explain-condition ((condition http-condition)
 			      (resource t)
 			      (ct snooze-types:text/html))
@@ -426,23 +438,23 @@ The activity creation endpoint is also straightforward:
 
 #+RESULTS:
 : #<STANDARD-METHOD SNOOZE:EXPLAIN-CONDITION (HTTP-CONDITION T
-:                                                            SNOOZE-TYPES:TEXT/HTML) {1008607523}>
+:                                                            SNOOZE-TYPES:TEXT/HTML) {10073ABB03}>
 
 The request can be made by running the following command on shell:
 
-#+BEGIN_SRC sh :results value verbatim
+#+BEGIN_SRC sh :results value verbatim :exports both
 curl --header "Content-Type: application/json" \
      --data "{\"activityTitle\":\"Teste\",\"activitySubtitle\":\"Teste\",\"sla\":3}" \
      http://localhost:9003/activity
 #+END_SRC
 
 #+RESULTS:
-: Index: 9
+: Index: 47
 
 The validation of the fields is tested by removing a field, or putting
 an invalid value:
 
-#+BEGIN_SRC sh :results value verbatim
+#+BEGIN_SRC sh :results value verbatim :exports both
 curl --header "Content-Type: application/json" \
      --data "{\"activityTitle\":\"Teste\",\"sla\":3}" \
      http://localhost:9003/activity
@@ -465,7 +477,7 @@ a few notable differences.
 
 So, defining a function in SQL to retrive an item is as follow:
 
-#+BEGIN_SRC sql :tangle "../database/scripts/tables_creation.sql"
+#+BEGIN_SRC sql :tangle "../database/scripts/functions.sql" :eval no
 CREATE OR REPLACE FUNCTION getCards(lim int, offs int, act int, pat text, vis int, bil int, 
 	  	  	   	    toReceive boolean, toSend boolean) 
 RETURNS TABLE (id integer,
@@ -556,6 +568,9 @@ corresponding classes.
 	  health-insurance (get-health-insurance health-insurance-id))))
 #+END_SRC
 
+#+RESULTS:
+: #<STANDARD-METHOD COMMON-LISP:INITIALIZE-INSTANCE :AFTER (CARD-RESULT) {10095F6203}>
+
 #+BEGIN_SRC lisp :tangle back-end.lisp
 (defun get-sla-status (sla days)
   (cond
@@ -573,6 +588,9 @@ corresponding classes.
 (defun get-health-insurance (id)
   (get-item 'health-insurance id))
 #+END_SRC
+
+#+RESULTS:
+: GET-HEALTH-INSURANCE
 
 Finally, we need to define the =json= format of the =card-result=
 class, by doing:
@@ -596,7 +614,7 @@ class, by doing:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (CARD-RESULT) {100743DD33}>
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (CARD-RESULT) {1004AFC673}>
 
 And defining a class to represent the overall result:
 
@@ -613,6 +631,9 @@ And defining a class to represent the overall result:
   ("totalCardsWarning" total-cards-warning)
   ("totalCardsDelayed" total-cards-delayed))
 #+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (CARDS-RESULT) {100711FE73}>
 
 With the same strategy used before to modify the values after
 instantiation:
@@ -632,7 +653,7 @@ instantiation:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD COMMON-LISP:INITIALIZE-INSTANCE :AFTER (CARDS-RESULT) {100334CAC3}>
+: #<STANDARD-METHOD COMMON-LISP:INITIALIZE-INSTANCE :AFTER (CARDS-RESULT) {100733A923}>
 
 Thus, the =cards= endpoint can be implemented:
 
@@ -651,7 +672,7 @@ Thus, the =cards= endpoint can be implemented:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD BACK-END::CARDS (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {1007FFC2C3}>
+: #<STANDARD-METHOD BACK-END::CARDS (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {10077085C3}>
 
 In the sequence, we have to implement the endpoint for registrating
 the cards. It would be also straightforward to implement the endpoints
@@ -778,6 +799,10 @@ So the endpoint is defined as follows:
 		(format s "Index: ~a" (id c))))))
 #+END_SRC
 
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::CARD (SNOOZE-VERBS:POST
+:                                   SNOOZE-TYPES:APPLICATION/JSON) {10079A3A73}>
+
 #+BEGIN_SRC lisp :tangle back-end.lisp
 (defun ensure (type object)
   (with-connection *config*
@@ -785,7 +810,12 @@ So the endpoint is defined as follows:
       (if id
 	  (get-dao type id)
 	  (insert-dao (to-dao (make-instance type) object))))))
+#+END_SRC
 
+#+RESULTS:
+: ENSURE
+
+#+BEGIN_SRC lisp :tangle classes.lisp
 (defgeneric to-dao (object parsed-plist)
   (:documentation "Sets the slots of the object from a plist parsed from json"))
 #+END_SRC
@@ -800,7 +830,7 @@ object. To facilitate the process of coding this method for each class
 defined before, we again define a macro, that generates the desired
 code. We want to write: 
 
-#+BEGIN_SRC lisp :tangle classes.lisp
+#+BEGIN_SRC lisp
 (def-to-dao activity
   (title :|title|)
   (subtitle :|subtitle|)
@@ -808,7 +838,7 @@ code. We want to write:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD BACK-END::TO-DAO (ACTIVITY T) {1003DFDC33}>
+: #<STANDARD-METHOD BACK-END::TO-DAO (ACTIVITY T) {1007AFDF93}>
 
 And get the expanded code:
 
@@ -821,9 +851,12 @@ And get the expanded code:
     #:G826))
 #+END_SRC
 
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::TO-DAO (ACTIVITY T) {10083BDC33}>
+
 So, the following macro does what we need:
 
-#+BEGIN_SRC lisp :tangle back-end.lisp
+#+BEGIN_SRC lisp :tangle classes.lisp
 (defmacro def-to-dao (class &body definitions)
   (let ((o (gensym))
 	(p (gensym)))
@@ -845,6 +878,13 @@ So, the following macro does what we need:
 : DEF-TO-DAO
 
 The remaining definitions are simple:
+
+#+BEGIN_SRC lisp :tangle classes.lisp :exports none
+(def-to-dao activity
+  (title :|title|)
+  (subtitle :|subtitle|)
+  (sla :|sla|))
+#+END_SRC
 
 #+BEGIN_SRC lisp :tangle classes.lisp
 (def-to-dao patient
@@ -871,7 +911,7 @@ The remaining definitions are simple:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD BACK-END::TO-DAO (CHECKLIST-ITEM T) {1003A8E913}>
+: #<STANDARD-METHOD BACK-END::TO-DAO (CHECKLIST-ITEM T) {100882E273}>
 
 Interesting to note that the bill definition expands recursively to a
 bill type definition. As the macro gives the support to it, the route
@@ -885,7 +925,12 @@ can be rewritten, using the macro.
   (health-insurance-id :|healthInsurance| 'id 'health-insurance)
   (visit-id :|visitId|)
   (bill-id :|bill| 'id 'bill))
+#+END_SRC
 
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::TO-DAO (CARD T) {100893B883}>
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
 (defroute card (:post "application/json")
     (let* ((json (handler-case (parse (payload-as-string) :as :plist)
 		   (error (e)

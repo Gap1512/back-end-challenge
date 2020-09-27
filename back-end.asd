@@ -4,5 +4,5 @@
   :serial t
   :depends-on (#:postmodern #:snooze #:clack #:jonathan #:simple-date/postgres-glue)
   :components ((:file "package")
-	       (:file "server/back-end")
-	       (:file "server/classes")))
+	       (:file "server/classes")
+	       (:file "server/back-end")))

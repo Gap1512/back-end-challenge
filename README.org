@@ -31,8 +31,9 @@ Next, it is necessary to connect to the database, by running =\c
 challenge= on psql, so the script may alter this specific
 database. The documentation on the implementation of the script can be
 found at [[file:database/scripts/][database/scripts/]], I encourage the reader to check the
-=README.org= file. Thus, the tables are created by running [[file:database/scripts/tables_creation.sql][this script]]
-and they are populated by running [[file:database/scripts/tables_insertions.sql][this other script]].
+=README.org= file. Thus, the tables are created by running [[file:database/scripts/table_creation.sql][this script]]
+and they are populated by running [[file:database/scripts/tables_insertions.sql][this other script]]. Also, it's
+necessary to run [[file:database/scripts/functions.sql][this script]] to implement the database functions.
 
 And add the lisp user:
 
