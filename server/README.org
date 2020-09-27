@@ -130,7 +130,7 @@ So, using this format, the classes are implemented:
 : #<DAO-CLASS BACK-END::BILL>
 
 Note that would be possible to implement the desired functionalities defining
-just these classes, but to give the system more power, but to automate
+just these classes, but to automate
 the process of inserting item, the remaining tables are also going to
 be implemented as classes.
 
