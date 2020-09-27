@@ -1,0 +1,917 @@
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: author:t broken-links:nil c:nil creator:nil
+#+OPTIONS: d:(not "LOGBOOK") date:nil e:t email:nil f:t inline:t num:t
+#+OPTIONS: p:nil pri:nil prop:nil stat:t tags:t tasks:t tex:t
+#+OPTIONS: timestamp:t title:t toc:nil todo:t |:t
+
+#+TITLE: Back-End Challenge: Server Creation
+#+AUTHOR: Gustavo Alves Pacheco
+#+EMAIL: gap1512@gmail.com
+#+LANGUAGE: en
+#+SELECT_TAGS: export
+#+EXCLUDE_TAGS: noexport
+#+CREATOR: Emacs 26.2 (Org mode 9.1.9)
+
+First, we start by calling the following macro to ensure that the
+definitions all go to the desired package:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(in-package :back-end)
+#+END_SRC
+
+On both =.lisp= files.
+
+#+BEGIN_SRC lisp :tangle classes.lisp :exports none
+(in-package :back-end)
+#+END_SRC
+
+Worth noting again, is that all the source code will be tangled into
+[[file:back-end.lisp][back-end.lisp]].
+
+* Tables as Lisp Classes
+
+Lisp have a powerful Object-Oriented system, that integrates well with
+the database, when using the [[https://marijnhaverbeke.nl/postmodern/][Postmodern]] wrapper around
+PostgreSQL. A class would be implemented as follow:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defclass activity ()
+  ((id :col-type integer :col-identity t :initarg :id :accessor id)
+   (title :col-type string :initarg :title :accessor title)
+   (subtitle :col-type string :initarg :subtitle :accessor subtitle)
+   (sla :col-type integer :initarg :sla :accessor sla))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name activities))
+#+END_SRC
+
+#+RESULTS:
+: #<DAO-CLASS BACK-END::ACTIVITY>
+
+So, using this format, the classes are implemented:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defclass card ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (creation-date :col-name creationDate :col-type timestamp
+		  :initarg :creation-date :accessor creation-date)
+   (patient-id :col-name patientId :col-type integer :col-references ((patients id))
+	       :initarg :patient-id :accessor patient-id)
+   (activity-id :col-name activityId :col-type integer :col-references ((activities id))
+		:initarg :activity-id :accessor activity-id)
+   (health-insurance-id :col-name healthInsuranceId :col-type integer :col-references ((healthInsurances id))
+			:initarg :health-insurance-id :accessor health-insurance-id)
+   (visit-id :col-name visitId :col-type integer
+	     :initarg :visit-id :accessor visit-id)
+   (bill-id :col-name billId :col-type integer :col-references ((bills id))
+	    :initarg :bill-id :accessor bill-id))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name cards))
+
+(defclass card-result (card)
+  ((days-since-created :col-name daysSinceCreated :col-type integer
+		       :initarg :days-since-created :accessor days-since-created)
+   (sla :col-name sla :col-type integer
+	:initarg :sla :accessor sla)
+   (bill-type :col-name billType :col-type string
+	      :initarg :bill-type :accessor bill-type)
+   (total-amount :col-name totalAmount :col-type float
+	      :initarg :total-amount :accessor total-amount)
+   (n-pends :col-name numberOfPendencies :col-type integer
+	    :initarg :n-pends :accessor n-pends)
+   (n-open-pends :col-name numberOfOpenPendencies :col-type integer
+		 :initarg :n-open-pends :accessor n-open-pends)
+   (n-docs :col-name numberOfnumberOfDocuments :col-type integer
+	   :initarg :n-docs :accessor n-docs)
+   (n-not-received-docs :col-name numberOfNotReceivedDocuments :col-type integer
+			:initarg :n-not-received-docs :accessor n-not-received-docs)
+   (n-checlist-item :col-name numberOfChecklistItem :col-type integer
+		    :initarg :n-checklist-item :accessor n-checlist-item)
+   (n-done-checlist-item :col-name numberOfDoneChecklistItem :col-type integer
+			 :initarg :n-donechecklist-item :accessor n-done-checlist-item)
+   (sla-status :accessor sla-status)
+   (patient :accessor patient)
+   (health-insurance :accessor health-insurance))
+  (:metaclass dao-class))
+
+(defclass health-insurance ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (name :col-type string :initarg :name :accessor name))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name healthInsurances))
+
+(defclass patient ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (name :col-type string :initarg :name :accessor name))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name patients))
+
+(defclass bill ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (type-id :col-name typeId :col-type integer :col-references ((billTypes id))
+	       :initarg :type-id :accessor type-id)
+   (total-amount :col-name totalAmount :col-type float
+		 :initarg :total-amount :accessor total-amount))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name bills))
+#+END_SRC
+
+#+RESULTS:
+: #<DAO-CLASS BACK-END::BILL>
+
+Note that would be possible to implement the desired functionalities defining
+just these classes, but to give the system more power, but to automate
+the process of inserting item, the remaining tables are also going to
+be implemented as classes.
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defclass bill-type ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (name :col-type string :initarg :name :accessor name))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name billTypes))
+
+(defclass cards-pendencies ()
+  ((card-id :col-name cardId :col-type integer :col-references ((cards id))
+	       :initarg :card-id :accessor card-id)
+   (pendency-id :col-name pendencyID :col-type integer :col-references ((pendecies id))
+	       :initarg :pendency-id :accessor pendency-id))
+  (:metaclass dao-class)
+  (:table-name cardsPendencies))
+
+(defclass cards-documents ()
+  ((card-id :col-name cardId :col-type integer :col-references ((cards id))
+	       :initarg :card-id :accessor card-id)
+   (document-id :col-name documentID :col-type integer :col-references ((documents id))
+	       :initarg :document-id :accessor document-id))
+  (:metaclass dao-class)
+  (:table-name cardsDocuments))
+
+(defclass cards-checklist-item ()
+  ((card-id :col-name cardId :col-type integer :col-references ((cards id))
+	       :initarg :card-id :accessor card-id)
+   (checklist-item-id :col-name checklistItemID :col-type integer :col-references ((checklistItems id))
+	       :initarg :checklist-item-id :accessor checklist-item-id))
+  (:metaclass dao-class)
+  (:table-name cardsChecklistItem))
+
+(defclass pendency ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (openp :col-name open :col-type boolean :initarg :openp :accessor openp))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name pendencies))
+
+(defclass documents ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (not-receivedp :col-name notReceived :col-type boolean :initarg :not-receivedp :accessor not-receivedp))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name documents))
+
+(defclass checklist-item ()
+  ((id :col-type integer :col-identity t :accessor id)
+   (donep :col-name done :col-type boolean :initarg :donep :accessor donep))
+  (:metaclass dao-class)
+  (:keys id)
+  (:table-name checklistItems))
+#+END_SRC
+
+#+RESULTS:
+: #<DAO-CLASS BACK-END::CHECKLIST-ITEM>
+
+It is also interesting to observe that all the tables in the database
+could be created by just calling the function =dao-table-definition=
+and passing these classes as arguments. The SQL generated when this
+occurs is:
+
+#+BEGIN_SRC lisp :exports both :wrap src sql
+(dao-table-definition 'card)
+#+END_SRC
+
+#+RESULTS:
+#+BEGIN_src sql
+CREATE TABLE cards (id INTEGER NOT NULL, creation_date TIMESTAMP NOT NULL, patient_id INTEGER NOT NULL, activity_id INTEGER NOT NULL, health_insurance_id INTEGER NOT NULL, visit_id INTEGER NOT NULL, bill_id INTEGER NOT NULL, PRIMARY KEY (id))
+#+END_src
+
+* Lisp Connection To Database
+
+In order to connect to the database, we must create a user for Lisp
+and granting all privileges to it. This is done by running the
+following SQL script:
+
+#+BEGIN_SRC sql
+CREATE USER lisp WITH PASSWORD 'lisp';
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO lisp;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lisp;
+#+END_SRC
+
+So Lisp can connect like in the following example, that returns the
+card with =id= equals 1:
+
+#+BEGIN_SRC lisp
+(with-connection '("challenge" "lisp" "lisp" "localhost")
+  (get-dao 'card 1))
+#+END_SRC
+
+#+RESULTS:
+: #<CARD {10042A0863}>
+
+* Server setup
+
+Putting that to rest for a while, we start to setup the back-end
+server, creating the endpoints. For it, we will use three
+packages. One gives us a web application environment, the other a URL
+router for Common Lisp, designed around REST web services and the
+last, JSON encoder/decoder. The packages in question are [[https://github.com/fukamachi/clack][Clack]], [[https://github.com/joaotavora/snooze][Snooze]]
+and [[https://github.com/Rudolph-Miller/jonathan][Jonathan]]. If you already ensued to quicklisp to load this project,
+both should be ready.
+
+To make the test process easier, we define a global variable,
+=*activities*= to serve as our database, for now. We populate it with
+some values.
+
+#+BEGIN_SRC lisp
+(defvar *activities*
+  (loop for (title subtitle sla)
+     in '(("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3)
+	  ("Title 1" "Subtitle 1" 3))
+     collecting (make-instance 'activity :id -1 :title title :subtitle subtitle :sla sla)))
+#+END_SRC
+
+#+RESULTS:
+: *ACTIVITIES*
+
+Next, the method that converts the activity object into JSON is
+defined:
+
+#+BEGIN_SRC lisp
+(defmethod %to-json ((activity activity))
+  (with-slots (id title subtitle sla) activity
+    (with-object
+      (write-key-value "activityId" id)
+      (write-key-value "activityTitle" title)
+      (write-key-value "activitySubtitle" subtitle)
+      (write-key-value "sla" sla))))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (ACTIVITY) {100532BAA3}>
+
+We will start by defining the routes, in a top-level fashion
+implementation. First, to establish a route that get all activities,
+we have something like:
+
+#+BEGIN_SRC lisp
+(defroute activities (:get :text/*)
+	  (to-json *activities*))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::ACTIVITIES (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {1006BB0D53}>
+
+Running this command to make a server, we already see a response:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun start-server (port)
+  (clack:clackup (make-clack-app) :port port))
+#+END_SRC
+
+#+RESULTS:
+: START-SERVER
+
+#+BEGIN_SRC lisp
+(start-server 9003)
+#+END_SRC
+
+#+RESULTS:
+: #S(CLACK.HANDLER::HANDLER
+:    :SERVER :HUNCHENTOOT
+:    :ACCEPTOR #<SB-THREAD:THREAD "clack-handler-hunchentoot" RUNNING
+:                 {1005ECBA23}>)
+
+When making a GET request:
+
+#+BEGIN_SRC sh :results value verbatim :wrap src js
+curl localhost:9003/activities
+#+END_SRC
+
+#+RESULTS:
+#+BEGIN_src js
+[{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3},{"activityId":-1,"activityTitle":"Title 1","activitySubtitle":"Subtitle 1","sla":3}]
+#+END_src
+
+So, we define a macro, to avoid repeating the same pattern. We want to
+write:
+
+#+BEGIN_SRC lisp :eval no
+(defjson 'activity
+  ("activityId" id)
+  ("activityTitle" title))
+#+END_SRC
+
+And it should expand into:
+
+#+BEGIN_SRC lisp :eval no
+(defmethod %to-json ((#:G806 activity))
+  (with-slots (id title subtitle sla) #:G806
+    (with-object
+      (write-key-value "activityId" id)
+      (write-key-value "activityTitle" title))))
+#+END_SRC
+
+This macro is defined as follows:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defmacro defjson (class &body definitions)
+  (let ((object (gensym)))
+    `(defmethod %to-json ((,object ,class))
+       (with-slots ,(mapcar #'second definitions) ,object
+	 (with-object
+	   ,@(mapcar #'(lambda (definition)
+			 `(write-key-value ,(first definition)
+					   ,(second definition)))
+		     definitions))))))
+#+END_SRC
+
+#+RESULTS:
+: DEFJSON
+
+Thus, it's easy to define the necessary =to-json= methods, with just a
+few lines of code:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defjson activity
+  ("activityId" id)
+  ("activityTitle" title)
+  ("activitySubtitle" subtitle)
+  ("sla" sla))
+
+(defjson patient
+  ("patientId" id)
+  ("name" name))
+
+(defjson health-insurance
+  ("healthInsuranceId" id)
+  ("name" name))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (HEALTH-INSURANCE) {1005CCCE23}>
+
+The =card= class will not receive a json encoding representation,
+having in mind the fact that some computation is needed in between the
+selection from the database and the return to the user.
+
+So, to get rid of the =*activities*= variable, declared before, and
+get the actual registers on the database, we write:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defvar *config* '("challenge" "lisp" "lisp" "localhost"))
+
+(defroute activities (:get :text/*)
+	  (with-connection *config*
+	    (to-json (select-dao 'activity))))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::ACTIVITIES (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {10077F9333}>
+
+Simple as that. So when running the following command we get the
+right response:
+
+#+BEGIN_SRC sh :results value verbatim :wrap src js :eval no
+curl localhost:9003/activities
+#+END_SRC
+
+The activity creation endpoint is also straightforward:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defroute activity (:post "application/json")
+	  (with-connection *config*
+	    (let* ((json (handler-case
+			     (parse (payload-as-string) :as :plist)
+			   (error (e)
+			     (http-condition 400 "Malformed JSON (~a)!" e))))
+		   (act (handler-case (insert-dao
+				       (let ((title (getf json :|activityTitle|))
+					     (subtitle (getf json :|activitySubtitle|))
+					     (sla (getf json :|sla|)))
+					 (if (and title subtitle sla)
+					     (make-instance 'activity
+							    :title title
+							    :subtitle subtitle
+							    :sla sla)
+					     (error "Missing fields"))))
+			  (error (e)
+			    (http-condition 400 "Invalid Entry (~a)!" e)))))
+	      (with-output-to-string (s)
+		(format s "Index: ~a" (id act))))))
+
+(defmethod explain-condition ((condition http-condition)
+			      (resource t)
+			      (ct snooze-types:text/html))
+  (with-output-to-string (s)
+    (format s "~a" condition)))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD SNOOZE:EXPLAIN-CONDITION (HTTP-CONDITION T
+:                                                            SNOOZE-TYPES:TEXT/HTML) {1008607523}>
+
+The request can be made by running the following command on shell:
+
+#+BEGIN_SRC sh :results value verbatim
+curl --header "Content-Type: application/json" \
+     --data "{\"activityTitle\":\"Teste\",\"activitySubtitle\":\"Teste\",\"sla\":3}" \
+     http://localhost:9003/activity
+#+END_SRC
+
+#+RESULTS:
+: Index: 9
+
+The validation of the fields is tested by removing a field, or putting
+an invalid value:
+
+#+BEGIN_SRC sh :results value verbatim
+curl --header "Content-Type: application/json" \
+     --data "{\"activityTitle\":\"Teste\",\"sla\":3}" \
+     http://localhost:9003/activity
+#+END_SRC
+
+#+RESULTS:
+: #<HTTP-CONDITION 400: Invalid Entry (Missing fields)!>
+
+And because of the method =explain-condition=, we get a nice error
+message whenever this occurs.
+
+Next, a simmilar logic is used to implement the =cards= endpoint, with
+a few notable differences.
+1. The query receive some parameters, used as filters to the database
+   selection;
+2. A paging system must be implemented. This is done by setting an
+   offset.
+3. After selection, some calculations are performed, by the =:after=
+   method.
+
+So, defining a function in SQL to retrive an item is as follow:
+
+#+BEGIN_SRC sql :tangle "../database/scripts/tables_creation.sql"
+CREATE OR REPLACE FUNCTION getCards(lim int, offs int, act int, pat text, vis int, bil int, 
+	  	  	   	    toReceive boolean, toSend boolean) 
+RETURNS TABLE (id integer,
+			  daysSinceCreated integer,
+			  sla integer,
+			  patientId integer,
+			  healthInsuranceId integer,
+			  visitId integer,
+			  billId integer,
+			  billType text,
+			  totalAmount real,
+			  numberOfPendencies bigint,
+			  numberOfOpenPendencies bigint,
+			  numberOfnumberOfDocuments bigint,
+			  numberOfNotReceivedDocuments bigint,
+			  numberOfChecklistItem bigint,
+			  numberOfDoneChecklistItem bigint
+			  ) AS
+$func$
+BEGIN
+RETURN QUERY 
+SELECT DISTINCT ON (c.id)
+	c.id,
+	CURRENT_DATE - DATE(c.creationDate),
+	a.sla, c.patientId, c.healthInsuranceId,
+	c.visitId, c.billId, bt.name, b.totalAmount,
+	COUNT(DISTINCT pend.id),	
+	COUNT(DISTINCT pend.id) FILTER (WHERE pend.open), 
+	COUNT(DISTINCT d.id), 
+	COUNT(DISTINCT d.id) FILTER (WHERE d.notReceived),
+	COUNT(DISTINCT ci.id), 
+	COUNT(DISTINCT ci.id) FILTER (WHERE ci.done)
+FROM cards c
+	JOIN activities a ON (a.id = c.activityId)
+	JOIN bills b ON (b.id = c.billId)
+	JOIN billTypes bt ON (bt.id = b.typeId)
+	LEFT OUTER JOIN patients p ON (c.patientId = p.id)
+    LEFT OUTER JOIN cardsPendencies cp ON (cp.cardId = c.id)
+	LEFT OUTER JOIN pendencies pend ON (cp.pendencyId = pend.id)
+    LEFT OUTER JOIN cardsDocuments cd ON (cd.cardId = c.id)
+	LEFT OUTER JOIN documents d ON (cd.documentId = d.id)
+    LEFT OUTER JOIN cardsChecklistItem cci ON (cci.cardId = c.id)
+	LEFT OUTER JOIN checklistItems ci ON (cci.checklistItemId = ci.id)
+WHERE
+	(act IS NULL OR c.activityId = act)  AND
+	(pat IS NULL OR p.name = pat)        AND
+	(vis IS NULL OR c.visitId = vis)     AND
+	(bil IS NULL OR c.billId = bil)      AND
+	(NOT toReceive OR d.notReceived)     AND
+	(NOT toSend OR ((NOT d.notReceived)  AND (ci.done) AND (NOT pend.open)))
+GROUP BY c.id, bt.name, b.totalamount, a.sla
+ORDER BY c.id DESC
+LIMIT lim
+OFFSET offs;
+END
+$func$
+LANGUAGE plpgsql;
+#+END_SRC
+
+And in Lisp we define:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun get-cards (&key (page 0) (per-page 20)
+		    (activity-id :null) (patient-name :null)
+		    (visit-id :null) (bill-id :null) (to-receive nil)
+		    (to-send nil))
+  (with-connection *config*
+    (query-dao 'card-result "SELECT * FROM getCards($1, $2, $3, $4, $5, $6, $7, $8)"
+	       per-page (* page per-page) activity-id patient-name visit-id bill-id to-receive to-send)))
+#+END_SRC
+
+#+RESULTS:
+: GET-CARDS
+
+This query will return a table that contains almost everything we need
+to present the user. The result is transformed into a =card-result=
+object, and the method defined bellow executes after one object from
+this class is instantiated. This method fills the remaining slots:
+=sla-status=, =patient= and =health-insurance= with objects from the
+corresponding classes.
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defmethod initialize-instance :after ((result card-result) &key)
+  (with-slots (sla-status sla days-since-created patient patient-id health-insurance health-insurance-id)
+      result
+    (setf sla-status (get-sla-status sla days-since-created)
+	  patient (get-patient patient-id)
+	  health-insurance (get-health-insurance health-insurance-id))))
+#+END_SRC
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun get-sla-status (sla days)
+  (cond
+    ((> days sla) "DELAYED")
+    ((< days (* 0.75 sla)) "WARNING")
+    (t "OK")))
+
+(defun get-item (class id)
+  (with-connection *config*
+    (get-dao class id)))
+  
+(defun get-patient (id)
+  (get-item 'patient id))
+
+(defun get-health-insurance (id)
+  (get-item 'health-insurance id))
+#+END_SRC
+
+Finally, we need to define the =json= format of the =card-result=
+class, by doing:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defjson card-result
+  ("daysSinceCreated" days-since-created)
+  ("slaStatus" sla-status)
+  ("patient" patient)
+  ("healthInsurance" health-insurance)
+  ("visitId" visit-id)
+  ("billId" bill-id)
+  ("billType" bill-type)
+  ("totalAmount" total-amount)
+  ("numberOfPendencies" n-pends)
+  ("numberOfOpenPendencies" n-open-pends)
+  ("numberOfDocuments" n-docs)
+  ("numberOfNotReceivedDocuments" n-not-received-docs)
+  ("numberOfChecklistItem" n-checlist-item)
+  ("numberOfDoneChecklistItem" n-done-checlist-item))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD JONATHAN.ENCODE:%TO-JSON (CARD-RESULT) {100743DD33}>
+
+And defining a class to represent the overall result:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defclass cards-result ()
+  ((cards-list :initarg :cards-list :accessor cards-list)
+   (total-cards-ok :accessor total-cards-ok)
+   (total-cards-warning :accessor total-cards-warning)
+   (total-cards-delayed :accessor total-cards-delayed)))
+
+(defjson cards-result
+  ("cards" cards-list)
+  ("totalCardsOk" total-cards-ok)
+  ("totalCardsWarning" total-cards-warning)
+  ("totalCardsDelayed" total-cards-delayed))
+#+END_SRC
+
+With the same strategy used before to modify the values after
+instantiation:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(defmethod initialize-instance :after ((result cards-result) &key)
+  (with-slots (cards-list total-cards-ok total-cards-warning total-cards-delayed)
+      result
+    (loop for card-result in cards-list
+       for sla-status = (sla-status card-result)
+       counting (string= "OK" sla-status) into ok
+       counting (string= "WARNING" sla-status) into warning
+       counting (string= "DELAYED" sla-status) into delayed
+       finally (setf total-cards-ok ok
+		     total-cards-warning warning
+		     total-cards-delayed delayed))))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD COMMON-LISP:INITIALIZE-INSTANCE :AFTER (CARDS-RESULT) {100334CAC3}>
+
+Thus, the =cards= endpoint can be implemented:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defroute cards (:get "text/*" &key (page 0) (perPage 20)
+		      (activityId :null) (patientName :null) (visitId :null)
+		      (billId :null) (filter "PRIORITY"))
+	  (to-json (make-instance 'cards-result
+				  :cards-list (get-cards :page page :per-page perPage
+							 :activity-id activityId
+							 :patient-name patientName
+							 :visit-id visitId
+							 :bill-id billId
+							 :to-receive (string= filter "TO_RECEIVE")
+							 :to-send (string= filter "TO_SEND")))))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::CARDS (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {1007FFC2C3}>
+
+In the sequence, we have to implement the endpoint for registrating
+the cards. It would be also straightforward to implement the endpoints
+to register and list the contents on every other table, but in this
+project, the user will be able to use the card endpoint to register
+the other values.
+
+So, a standard call to the api would pass a =JSON= as the following:
+
+#+BEGIN_SRC js :eval no
+{
+    "creationDate": "2020-09-26",
+    "patient": {
+	"name": "Gustavo Alves Pacheco"
+    },
+    "activity": {
+	"title": "Title",
+	"subtitle": "Subtitle",
+	"sla": 3
+    },
+    "healthInsurance": {
+	"name": "Health Insurance"
+    },
+    "visitId": 1,
+    "bill": {
+	"billType": {
+	    "name": "Hospitalar"
+	},
+	"totalAmount": 5000.00
+    },
+    "pendencies": [
+	{"open": true},
+	{"open": false},
+	{"open": false}
+    ],
+    "documents": [
+	{"notReceived": true},
+	{"notReceived": true},
+	{"notReceived": false}
+    ],
+    "checklistItems": [
+	{"done": false},
+	{"done": true},
+	{"done": false}
+    ]
+}
+#+END_SRC
+
+Note that in this call not only a card would be registered, but also a
+patient, an activity, a health insurance, a bill and a bill type. If
+the user wishes to use values that are already on the database, he
+could pass something like:
+
+#+BEGIN_SRC js :eval no
+{
+    "creationDate": "2020-09-26",
+    "patient": {
+	"id": 1
+    },
+    "activity": {
+	"id": 3
+    },
+    "healthInsurance": {
+	"id": 1
+    },
+    "visitId": 1,
+    "bill": {
+	"billType": {
+	    "id": 2
+	},
+	"totalAmount": 5000.00
+    },
+    "pendencies": [
+	{"id": 1},
+	{"id": 2},
+	{"id": 3}
+    ],
+    "documents": [
+	{"id": 1},
+	{"id": 2},
+	{"id": 3}
+    ],
+    "checklistItems": [
+	{"id": 1},
+	{"id": 2},
+	{"id": 3}
+    ]
+}
+#+END_SRC
+
+So the endpoint is defined as follows:
+
+#+BEGIN_SRC lisp
+(defroute card (:post "application/json")
+	  (with-connection *config*
+	    (let* ((json (handler-case
+			     (parse (payload-as-string) :as :plist)
+			   (error (e)
+			     (http-condition 400 "Malformed JSON (~a)!" e))))
+		   (c (handler-case (insert-dao
+				     (let ((creation-date (getf json :|creationDate|))
+					   (patient (getf json :|patient|))
+					   (activity (getf json :|activity|))
+					   (health-insurance (getf json :|healthInsurance|))
+					   (visit-id (getf json :|visit-id|))
+					   (bill (getf json :|bill|))
+					   (pendencies (getf json :|pendencies|))
+					   (documents (getf json :|documents|))
+					   (checklist-items (getf json :|checklistItems|)))
+				       (if (and creation-date patient activity
+						health-insurance visit-id bill)
+					   (make-instance 'card
+							  :creation-date creation-date
+							  :patient-id (id (ensure 'patient patient))
+							  :activity-id (id (ensure 'activity activity))
+							  :health-insurance-id (id (ensure 'health-insurance
+											   health-insurance))
+							  :visit-id visit-id
+							  :bill-id (id (ensure 'bill bill)))
+					   (error "Missing fields"))))
+			(error (e)
+			  (http-condition 400 "Invalid Entry (~a)!" e)))))
+	      (with-output-to-string (s)
+		(format s "Index: ~a" (id c))))))
+#+END_SRC
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun ensure (type object)
+  (with-connection *config*
+    (let ((id (getf object :|id|)))
+      (if id
+	  (get-dao type id)
+	  (insert-dao (to-dao (make-instance type) object))))))
+
+(defgeneric to-dao (object parsed-plist)
+  (:documentation "Sets the slots of the object from a plist parsed from json"))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-GENERIC-FUNCTION BACK-END::TO-DAO (9)>
+
+The function =ensure= check if the id is found on the database, and if
+not, creates an instance of the corresponding object and calls the
+method =to-dao=, that transforms the plist into the right dao
+object. To facilitate the process of coding this method for each class
+defined before, we again define a macro, that generates the desired
+code. We want to write: 
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(def-to-dao activity
+  (title :|title|)
+  (subtitle :|subtitle|)
+  (sla :|sla|))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::TO-DAO (ACTIVITY T) {1003DFDC33}>
+
+And get the expanded code:
+
+#+BEGIN_SRC lisp
+(defmethod to-dao ((#:G826 activity) #:G827)
+  (with-slots (title subtitle sla) #:G826
+    (setf title (getf #:G827 :|title|)
+	  subtitle (getf #:G827 :|subtitle|)
+	  sla (getf #:G827 :|sla|))
+    #:G826))
+#+END_SRC
+
+So, the following macro does what we need:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defmacro def-to-dao (class &body definitions)
+  (let ((o (gensym))
+	(p (gensym)))
+    `(defmethod to-dao ((,o ,class) ,p)
+       (with-slots ,(mapcar #'first definitions) ,o
+	 ,@(mapcar #'(lambda (def)
+		       (let ((x (gensym))
+			     (y (gensym)))
+			 `(let ((,x (getf ,p ,(second def)))
+				(,y ,(third def)))
+			    (setf ,(first def) (if ,y
+						   (slot-value (ensure ,(fourth def) ,x) ,y)
+						   ,x)))))
+		   definitions)
+	 ,o))))
+#+END_SRC
+
+#+RESULTS:
+: DEF-TO-DAO
+
+The remaining definitions are simple:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(def-to-dao patient
+  (name :|name|))
+
+(def-to-dao health-insurance
+  (name :|name|))
+
+(def-to-dao bill
+  (type-id :|billType| 'id 'bill-type)
+  (total-amount :|totalAmount|))
+
+(def-to-dao bill-type
+  (name :|name|))
+
+(def-to-dao pendency
+  (openp :|open|))
+
+(def-to-dao documents
+  (not-receivedp :|notReceived|))
+
+(def-to-dao checklist-item
+  (donep :|done|))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::TO-DAO (CHECKLIST-ITEM T) {1003A8E913}>
+
+Interesting to note that the bill definition expands recursively to a
+bill type definition. As the macro gives the support to it, the route
+can be rewritten, using the macro.
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(def-to-dao card
+  (creation-date :|creationDate|)
+  (patient-id :|patient| 'id 'patient)
+  (activity-id :|activity| 'id 'activity)
+  (health-insurance-id :|healthInsurance| 'id 'health-insurance)
+  (visit-id :|visitId|)
+  (bill-id :|bill| 'id 'bill))
+
+(defroute card (:post "application/json")
+    (let* ((json (handler-case (parse (payload-as-string) :as :plist)
+		   (error (e)
+		     (http-condition 400 "Malformed JSON (~a)!" e))))
+	   (c (handler-case (ensure 'card json)
+		(error (e)
+		  (http-condition 400 "Invalid Entry (~a)!" e)))))
+      (let ((pendencies (getf json :|pendencies|))
+	    (documents (getf json :|documents|))
+	    (checklist-items (getf json :|checklistItems|))
+	    (card-id (id c)))
+	(n-to-n pendencies 'pendency 'cards-pendencies :pendency-id card-id)
+	(n-to-n documents 'documents 'cards-documents :document-id card-id)
+	(n-to-n checklist-items 'checklist-item 'cards-checklist-item :checklist-item-id card-id)
+      (with-output-to-string (s)
+	(format s "Index: ~a" card-id)))))
+
+(defun n-to-n (lst type-of-list class-relationship relationship-symbol card-id)
+  (with-connection *config*
+    (mapcar #'(lambda (item)
+		(let ((x (make-instance class-relationship
+					   relationship-symbol (id (ensure type-of-list item))
+					   :card-id card-id)))
+		(insert-dao x)))
+		lst)))
+#+END_SRC
+
+#+RESULTS:
+: N-TO-N
