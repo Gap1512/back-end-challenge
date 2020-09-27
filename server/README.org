@@ -114,8 +114,7 @@ So, using this format, the classes are implemented:
    (type-id :col-name typeId :col-type integer :col-references ((billTypes id))
 	       :initarg :type-id :accessor type-id)
    (total-amount :col-name totalAmount :col-type float
-		 :initarg :total-amount :accessor total-amount)
-   (type-name :accessor type-name))
+		 :initarg :total-amount :accessor total-amount))
   (:metaclass dao-class)
   (:keys id)
   (:table-name bills))
@@ -143,7 +142,6 @@ be implemented as classes.
    (pendency-id :col-name pendencyID :col-type integer :col-references ((pendecies id))
 	       :initarg :pendency-id :accessor pendency-id))
   (:metaclass dao-class)
-  (:keys id)
   (:table-name cardsPendencies))
 
 (defclass cards-documents ()
@@ -152,7 +150,6 @@ be implemented as classes.
    (document-id :col-name documentID :col-type integer :col-references ((documents id))
 	       :initarg :document-id :accessor document-id))
   (:metaclass dao-class)
-  (:keys id)
   (:table-name cardsDocuments))
 
 (defclass cards-checklist-item ()
@@ -161,7 +158,6 @@ be implemented as classes.
    (checklist-item-id :col-name checklistItemID :col-type integer :col-references ((checklistItems id))
 	       :initarg :checklist-item-id :accessor checklist-item-id))
   (:metaclass dao-class)
-  (:keys id)
   (:table-name cardsChecklistItem))
 
 (defclass pendency ()
@@ -176,7 +172,7 @@ be implemented as classes.
    (not-receivedp :col-name notReceived :col-type boolean :initarg :not-receivedp :accessor not-receivedp))
   (:metaclass dao-class)
   (:keys id)
-  (:table-name pendencies))
+  (:table-name documents))
 
 (defclass checklist-item ()
   ((id :col-type integer :col-identity t :accessor id)
@@ -185,6 +181,9 @@ be implemented as classes.
   (:keys id)
   (:table-name checklistItems))
 #+END_SRC
+
+#+RESULTS:
+: #<DAO-CLASS BACK-END::CHECKLIST-ITEM>
 
 It is also interesting to observe that all the tables in the database
 could be created by just calling the function =dao-table-definition=
@@ -471,7 +470,7 @@ CREATE OR REPLACE FUNCTION getCards(lim int, offs int,
 									act int, pat text, vis int, bil int, 
 									toReceive boolean, toSend boolean) 
 RETURNS TABLE (id integer,
-			   daysSinceCreated integer,
+			  daysSinceCreated integer,
 			  sla integer,
 			  patientId integer,
 			  healthInsuranceId integer,
@@ -489,31 +488,33 @@ RETURNS TABLE (id integer,
 $func$
 BEGIN
 RETURN QUERY 
-SELECT c.id, 
+SELECT DISTINCT ON (c.id)
+	c.id,
 	CURRENT_DATE - DATE(c.creationDate),
 	a.sla, c.patientId, c.healthInsuranceId,
-	c.visitId, c.billId, bt.name, b.totalAmount, 
+	c.visitId, c.billId, bt.name, b.totalAmount,
 	COUNT(pend.id),	COUNT(pend.open), COUNT(d.id), COUNT(d.notReceived),
 	COUNT(ci.id), COUNT(ci.done)
 FROM cards c
 	JOIN activities a ON (a.id = c.activityId)
 	JOIN bills b ON (b.id = c.billId)
 	JOIN billTypes bt ON (bt.id = b.typeId)
-    JOIN cardsPendencies cp ON (cp.cardId = c.id)
-	JOIN pendencies pend ON (cp.pendencyId = pend.id)
-    JOIN cardsDocuments cd ON (cd.cardId = c.id)
-	JOIN documents d ON (cd.documentId = d.id)
-    JOIN cardsChecklistItem cci ON (cci.cardId = c.id)
-	JOIN checklistItems ci ON (cci.checklistItemId = ci.id)
 	JOIN patients p ON (c.patientId = p.id)
+    LEFT OUTER JOIN cardsPendencies cp ON (cp.cardId = c.id)
+	LEFT OUTER JOIN pendencies pend ON (cp.pendencyId = pend.id)
+    LEFT OUTER JOIN cardsDocuments cd ON (cd.cardId = c.id)
+	LEFT OUTER JOIN documents d ON (cd.documentId = d.id)
+    LEFT OUTER JOIN cardsChecklistItem cci ON (cci.cardId = c.id)
+	LEFT OUTER JOIN checklistItems ci ON (cci.checklistItemId = ci.id)
 WHERE 
 	(act IS NULL OR c.activityId = act)  AND
-	(pat IS NULL OR p.name = pat)        AND 
+	(pat IS NULL OR p.name = pat)        AND
 	(vis IS NULL OR c.visitId = vis)     AND
 	(bil IS NULL OR c.billId = bil)      AND
 	(NOT toReceive OR d.notReceived)     AND
 	(NOT toSend OR ((NOT d.notReceived)  AND (ci.done) AND (NOT pend.open)))
     GROUP BY c.id, bt.name, b.totalamount, a.sla
+	ORDER BY c.id DESC
     LIMIT lim
     OFFSET offs;
 END
@@ -630,7 +631,7 @@ instantiation:
 #+RESULTS:
 : #<STANDARD-METHOD COMMON-LISP:INITIALIZE-INSTANCE :AFTER (CARDS-RESULT) {100334CAC3}>
 
-Thus, the endpoint can be implemented:
+Thus, the =cards= endpoint can be implemented:
 
 #+BEGIN_SRC lisp :tangle back-end.lisp
 (defroute cards (:get "text/*" &key (page 0) (perPage 20)
@@ -647,4 +648,268 @@ Thus, the endpoint can be implemented:
 #+END_SRC
 
 #+RESULTS:
-: #<STANDARD-METHOD BACK-END::CARDS (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {100580B733}>
+: #<STANDARD-METHOD BACK-END::CARDS (SNOOZE-VERBS:GET SNOOZE-TYPES:TEXT) {1007FFC2C3}>
+
+In the sequence, we have to implement the endpoint for registrating
+the cards. It would be also straightforward to implement the endpoints
+to register and list the contents on every other table, but in this
+project, the user will be able to use the card endpoint to register
+the other values.
+
+So, a standard call to the api would pass a =JSON= as the following:
+
+#+BEGIN_SRC js :eval no
+{
+    "creationDate": "2020-09-26",
+    "patient": {
+	"name": "Gustavo Alves Pacheco"
+    },
+    "activity": {
+	"title": "Title",
+	"subtitle": "Subtitle",
+	"sla": 3
+    },
+    "healthInsurance": {
+	"name": "Health Insurance"
+    },
+    "visitId": 1,
+    "bill": {
+	"billType": {
+	    "name": "Hospitalar"
+	},
+	"totalAmount": 5000.00
+    },
+    "pendencies": [
+	{"open": true},
+	{"open": false},
+	{"open": false}
+    ],
+    "documents": [
+	{"notReceived": true},
+	{"notReceived": true},
+	{"notReceived": false}
+    ],
+    "checklistItems": [
+	{"done": false},
+	{"done": true},
+	{"done": false}
+    ]
+}
+#+END_SRC
+
+Note that in this call not only a card would be registered, but also a
+patient, an activity, a health insurance, a bill and a bill type. If
+the user wishes to use values that are already on the database, he
+could pass something like:
+
+#+BEGIN_SRC js :eval no
+{
+    "creationDate": "2020-09-26",
+    "patient": {
+	"id": 1
+    },
+    "activity": {
+	"id": 3
+    },
+    "healthInsurance": {
+	"id": 1
+    },
+    "visitId": 1,
+    "bill": {
+	"billType": {
+	    "id": 2
+	},
+	"totalAmount": 5000.00
+    },
+    "pendencies": [
+	{"id": 1},
+	{"id": 2},
+	{"id": 3}
+    ],
+    "documents": [
+	{"id": 1},
+	{"id": 2},
+	{"id": 3}
+    ],
+    "checklistItems": [
+	{"id": 1},
+	{"id": 2},
+	{"id": 3}
+    ]
+}
+#+END_SRC
+
+So the endpoint is defined as follows:
+
+#+BEGIN_SRC lisp
+(defroute card (:post "application/json")
+	  (with-connection *config*
+	    (let* ((json (handler-case
+			     (parse (payload-as-string) :as :plist)
+			   (error (e)
+			     (http-condition 400 "Malformed JSON (~a)!" e))))
+		   (c (handler-case (insert-dao
+				     (let ((creation-date (getf json :|creationDate|))
+					   (patient (getf json :|patient|))
+					   (activity (getf json :|activity|))
+					   (health-insurance (getf json :|healthInsurance|))
+					   (visit-id (getf json :|visit-id|))
+					   (bill (getf json :|bill|))
+					   (pendencies (getf json :|pendencies|))
+					   (documents (getf json :|documents|))
+					   (checklist-items (getf json :|checklistItems|)))
+				       (if (and creation-date patient activity
+						health-insurance visit-id bill)
+					   (make-instance 'card
+							  :creation-date creation-date
+							  :patient-id (id (ensure 'patient patient))
+							  :activity-id (id (ensure 'activity activity))
+							  :health-insurance-id (id (ensure 'health-insurance
+											   health-insurance))
+							  :visit-id visit-id
+							  :bill-id (id (ensure 'bill bill)))
+					   (error "Missing fields"))))
+			(error (e)
+			  (http-condition 400 "Invalid Entry (~a)!" e)))))
+	      (with-output-to-string (s)
+		(format s "Index: ~a" (id c))))))
+#+END_SRC
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defun ensure (type object)
+  (with-connection *config*
+    (let ((id (getf object :|id|)))
+      (if id
+	  (get-dao type id)
+	  (insert-dao (to-dao (make-instance type) object))))))
+
+(defgeneric to-dao (object parsed-plist)
+  (:documentation "Sets the slots of the object from a plist parsed from json"))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-GENERIC-FUNCTION BACK-END::TO-DAO (9)>
+
+The function =ensure= check if the id is found on the database, and if
+not, creates an instance of the corresponding object and calls the
+method =to-dao=, that transforms the plist into the right dao
+object. To facilitate the process of coding this method for each class
+defined before, we again define a macro, that generates the desired
+code. We want to write: 
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(def-to-dao activity
+  (title :|title|)
+  (subtitle :|subtitle|)
+  (sla :|sla|))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::TO-DAO (ACTIVITY T) {1003DFDC33}>
+
+And get the expanded code:
+
+#+BEGIN_SRC lisp
+(defmethod to-dao ((#:G826 activity) #:G827)
+  (with-slots (title subtitle sla) #:G826
+    (setf title (getf #:G827 :|title|)
+	  subtitle (getf #:G827 :|subtitle|)
+	  sla (getf #:G827 :|sla|))
+    #:G826))
+#+END_SRC
+
+So, the following macro does what we need:
+
+#+BEGIN_SRC lisp :tangle back-end.lisp
+(defmacro def-to-dao (class &body definitions)
+  (let ((o (gensym))
+	(p (gensym)))
+    `(defmethod to-dao ((,o ,class) ,p)
+       (with-slots ,(mapcar #'first definitions) ,o
+	 ,@(mapcar #'(lambda (def)
+		       (let ((x (gensym))
+			     (y (gensym)))
+			 `(let ((,x (getf ,p ,(second def)))
+				(,y ,(third def)))
+			    (setf ,(first def) (if ,y
+						   (slot-value (ensure ,(fourth def) ,x) ,y)
+						   ,x)))))
+		   definitions)
+	 ,o))))
+#+END_SRC
+
+#+RESULTS:
+: DEF-TO-DAO
+
+The remaining definitions are simple:
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(def-to-dao patient
+  (name :|name|))
+
+(def-to-dao health-insurance
+  (name :|name|))
+
+(def-to-dao bill
+  (type-id :|billType| 'id 'bill-type)
+  (total-amount :|totalAmount|))
+
+(def-to-dao bill-type
+  (name :|name|))
+
+(def-to-dao pendency
+  (openp :|open|))
+
+(def-to-dao documents
+  (not-receivedp :|notReceived|))
+
+(def-to-dao checklist-item
+  (donep :|done|))
+#+END_SRC
+
+#+RESULTS:
+: #<STANDARD-METHOD BACK-END::TO-DAO (CHECKLIST-ITEM T) {1003A8E913}>
+
+Interesting to note that the bill definition expands recursively to a
+bill type definition. As the macro gives the support to it, the route
+can be rewritten, using the macro.
+
+#+BEGIN_SRC lisp :tangle classes.lisp
+(def-to-dao card
+  (creation-date :|creationDate|)
+  (patient-id :|patient| 'id 'patient)
+  (activity-id :|activity| 'id 'activity)
+  (health-insurance-id :|healthInsurance| 'id 'health-insurance)
+  (visit-id :|visitId|)
+  (bill-id :|bill| 'id 'bill))
+
+(defroute card (:post "application/json")
+    (let* ((json (handler-case (parse (payload-as-string) :as :plist)
+		   (error (e)
+		     (http-condition 400 "Malformed JSON (~a)!" e))))
+	   (c (handler-case (ensure 'card json)
+		(error (e)
+		  (http-condition 400 "Invalid Entry (~a)!" e)))))
+      (let ((pendencies (getf json :|pendencies|))
+	    (documents (getf json :|documents|))
+	    (checklist-items (getf json :|checklistItems|))
+	    (card-id (id c)))
+	(n-to-n pendencies 'pendency 'cards-pendencies :pendency-id card-id)
+	(n-to-n documents 'documents 'cards-documents :document-id card-id)
+	(n-to-n checklist-items 'checklist-item 'cards-checklist-item :checklist-item-id card-id)
+      (with-output-to-string (s)
+	(format s "Index: ~a" card-id)))))
+
+(defun n-to-n (lst type-of-list class-relationship relationship-symbol card-id)
+  (with-connection *config*
+    (mapcar #'(lambda (item)
+		(let ((x (make-instance class-relationship
+					   relationship-symbol (id (ensure type-of-list item))
+					   :card-id card-id)))
+		(insert-dao x)))
+		lst)))
+#+END_SRC
+
+#+RESULTS:
+: N-TO-N
+

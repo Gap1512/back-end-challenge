@@ -72,8 +72,7 @@
    (type-id :col-name typeId :col-type integer :col-references ((billTypes id))
 	       :initarg :type-id :accessor type-id)
    (total-amount :col-name totalAmount :col-type float
-		 :initarg :total-amount :accessor total-amount)
-   (type-name :accessor type-name))
+		 :initarg :total-amount :accessor total-amount))
   (:metaclass dao-class)
   (:keys id)
   (:table-name bills))
@@ -91,7 +90,6 @@
    (pendency-id :col-name pendencyID :col-type integer :col-references ((pendecies id))
 	       :initarg :pendency-id :accessor pendency-id))
   (:metaclass dao-class)
-  (:keys id)
   (:table-name cardsPendencies))
 
 (defclass cards-documents ()
@@ -100,7 +98,6 @@
    (document-id :col-name documentID :col-type integer :col-references ((documents id))
 	       :initarg :document-id :accessor document-id))
   (:metaclass dao-class)
-  (:keys id)
   (:table-name cardsDocuments))
 
 (defclass cards-checklist-item ()
@@ -109,7 +106,6 @@
    (checklist-item-id :col-name checklistItemID :col-type integer :col-references ((checklistItems id))
 	       :initarg :checklist-item-id :accessor checklist-item-id))
   (:metaclass dao-class)
-  (:keys id)
   (:table-name cardsChecklistItem))
 
 (defclass pendency ()
@@ -124,7 +120,7 @@
    (not-receivedp :col-name notReceived :col-type boolean :initarg :not-receivedp :accessor not-receivedp))
   (:metaclass dao-class)
   (:keys id)
-  (:table-name pendencies))
+  (:table-name documents))
 
 (defclass checklist-item ()
   ((id :col-type integer :col-identity t :accessor id)
@@ -203,3 +199,64 @@
        finally (setf total-cards-ok ok
 		     total-cards-warning warning
 		     total-cards-delayed delayed))))
+
+(def-to-dao activity
+  (title :|title|)
+  (subtitle :|subtitle|)
+  (sla :|sla|))
+
+(def-to-dao patient
+  (name :|name|))
+
+(def-to-dao health-insurance
+  (name :|name|))
+
+(def-to-dao bill
+  (type-id :|billType| 'id 'bill-type)
+  (total-amount :|totalAmount|))
+
+(def-to-dao bill-type
+  (name :|name|))
+
+(def-to-dao pendency
+  (openp :|open|))
+
+(def-to-dao documents
+  (not-receivedp :|notReceived|))
+
+(def-to-dao checklist-item
+  (donep :|done|))
+
+(def-to-dao card
+  (creation-date :|creationDate|)
+  (patient-id :|patient| 'id 'patient)
+  (activity-id :|activity| 'id 'activity)
+  (health-insurance-id :|healthInsurance| 'id 'health-insurance)
+  (visit-id :|visitId|)
+  (bill-id :|bill| 'id 'bill))
+
+(defroute card (:post "application/json")
+    (let* ((json (handler-case (parse (payload-as-string) :as :plist)
+		   (error (e)
+		     (http-condition 400 "Malformed JSON (~a)!" e))))
+	   (c (handler-case (ensure 'card json)
+		(error (e)
+		  (http-condition 400 "Invalid Entry (~a)!" e)))))
+      (let ((pendencies (getf json :|pendencies|))
+	    (documents (getf json :|documents|))
+	    (checklist-items (getf json :|checklistItems|))
+	    (card-id (id c)))
+	(n-to-n pendencies 'pendency 'cards-pendencies :pendency-id card-id)
+	(n-to-n documents 'documents 'cards-documents :document-id card-id)
+	(n-to-n checklist-items 'checklist-item 'cards-checklist-item :checklist-item-id card-id)
+      (with-output-to-string (s)
+	(format s "Index: ~a" card-id)))))
+
+(defun n-to-n (lst type-of-list class-relationship relationship-symbol card-id)
+  (with-connection *config*
+    (mapcar #'(lambda (item)
+		(let ((x (make-instance class-relationship
+					   relationship-symbol (id (ensure type-of-list item))
+					   :card-id card-id)))
+		(insert-dao x)))
+		lst)))

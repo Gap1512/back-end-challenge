@@ -63,6 +63,37 @@
 (defroute cards (:get "text/*" &key (page 0) (perPage 20)
 		      (activityId :null) (patientName :null) (visitId :null)
 		      (billId :null) (filter "PRIORITY"))
-	  
-	  "Teste")
-					;(to-json (make-instance 'cards-result :cards-list (get-cards))))
+	  (to-json (make-instance 'cards-result
+				  :cards-list (get-cards :page page :per-page perPage
+							 :activity-id activityId
+							 :patient-name patientName
+							 :visit-id visitId
+							 :bill-id billId
+							 :to-receive (string= filter "TO_RECEIVE")
+							 :to-send (string= filter "TO_SEND")))))
+
+(defun ensure (type object)
+  (with-connection *config*
+    (let ((id (getf object :|id|)))
+      (if id
+	  (get-dao type id)
+	  (insert-dao (to-dao (make-instance type) object))))))
+
+(defgeneric to-dao (object parsed-plist)
+  (:documentation "Sets the slots of the object from a plist parsed from json"))
+
+(defmacro def-to-dao (class &body definitions)
+  (let ((o (gensym))
+	(p (gensym)))
+    `(defmethod to-dao ((,o ,class) ,p)
+       (with-slots ,(mapcar #'first definitions) ,o
+	 ,@(mapcar #'(lambda (def)
+		       (let ((x (gensym))
+			     (y (gensym)))
+			 `(let ((,x (getf ,p ,(second def)))
+				(,y ,(third def)))
+			    (setf ,(first def) (if ,y
+						   (slot-value (ensure ,(fourth def) ,x) ,y)
+						   ,x)))))
+		   definitions)
+	 ,o))))
