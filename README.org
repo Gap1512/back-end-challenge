@@ -14,10 +14,9 @@
 * Database Modelling
 
 In this project, a PostgreSQL database will be used. After modelling
-the database structure (fig. [[fig1]]), aiming to fit the desired endpoints results
+the database structure, aiming to fit the desired endpoints results
 and parameters, we start to setup the database.
 
-#+NAME: fig1
 [[./database/model/database.png]]
 
 After [[https://www.postgresql.org/download/][downloading and installing]] Postgres, it is necessary to create
@@ -35,3 +34,33 @@ found at [[file:database/scripts/][database/scripts/]], I encourage the reader t
 =README.org= file. Thus, the tables are created by running [[file:database/scripts/table_creation.sql][this script]]
 and they are populated by running [[file:database/scripts/tables_insertions.sql][this other script]].
 
+And add the lisp user:
+
+#+BEGIN_SRC sql
+CREATE USER lisp WITH PASSWORD 'lisp';
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO lisp;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lisp;
+#+END_SRC
+
+* Back-end Server
+
+Next, it is necessary to have Common Lisp installed, along with
+=quicklisp=, to manage packages. This can be easily done by
+downloading [[https://portacle.github.io][Portacle]] and cloning this repository into the
+=local-projects= folder, inside =portacle/quicklisp/=.
+
+After done, it is necessary to execute Portacle, open Slime (by
+pressing Alt+X and typing =slime=) and run the following command:
+
+#+BEGIN_SRC lisp
+(ql:quickload :back-end)
+#+END_SRC
+
+This will download and install every dependency of the project. The
+implementation process of this step is documented in [[file:server/][server/]].
+
+Execute this command to get the server up and running (on port 9003): 
+
+#+BEGIN_SRC lisp
+(start-server 9003)
+#+END_SRC
